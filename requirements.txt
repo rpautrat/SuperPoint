@@ -1,0 +1,6 @@
+tensorflow-gpu==1.4
+numpy
+opencv-python
+tqdm
+pyyaml
+flake8
