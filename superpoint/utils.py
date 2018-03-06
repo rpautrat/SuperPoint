@@ -1,18 +1,3 @@
-#! /usr/bin/env python3
-
-"""
-bitset.py
-
-Written by Geremy Condra
-
-Licensed under GPLv3
-
-Released 3 May 2009
-
-This module provides a simple bitset implementation
-for Python.
-"""
-
 from collections import Sequence
 import math
 
@@ -21,9 +6,9 @@ class Bitset(Sequence):
         """
         A very simple bitset implementation for Python.
 
-        Note that, like with normal numbers, the leftmost
-        index is the MSB, and like normal sequences, that
-        is 0.
+        Author: Geremy Condra
+        Licensed under GPLv3
+        Released 3 May 2009
 
         Usage:
         >>> b = Bitset(5)
