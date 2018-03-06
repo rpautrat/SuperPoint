@@ -1,5 +1,6 @@
 tensorflow-gpu==1.4
 numpy
+scipy
 opencv-python
 tqdm
 pyyaml
