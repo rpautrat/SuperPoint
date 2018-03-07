@@ -9,16 +9,20 @@ class SimpleClassifier(BaseModel):
             'image': {'shape': [None, None, None, 1], 'type': tf.float32}
     }
     required_config_keys = []
-    default_config = {}
+    default_config = {'data_format': 'channels_first'}
 
     def _model(self, inputs, mode, **config):
         x = inputs['image']
+        if config['data_format'] == 'channels_first':
+            x = tf.transpose(x, [0, 3, 1, 2])
 
-        x = tfl.conv2d(x, 32, 5, activation=tf.nn.relu, padding='SAME', name='conv1')
-        x = tfl.max_pooling2d(x, 2, 2, padding='SAME', name='pool1')
+        params = {'padding': 'SAME', 'data_format': config['data_format']}
 
-        x = tfl.conv2d(x, 64, 5, activation=tf.nn.relu, padding='SAME', name='conv2')
-        x = tfl.max_pooling2d(x, 2, 2, padding='SAME', name='pool2')
+        x = tfl.conv2d(x, 32, 5, activation=tf.nn.relu, name='conv1', **params)
+        x = tfl.max_pooling2d(x, 2, 2, name='pool1', **params)
+
+        x = tfl.conv2d(x, 64, 5, activation=tf.nn.relu, name='conv2', **params)
+        x = tfl.max_pooling2d(x, 2, 2, name='pool2', **params)
 
         x = tfl.flatten(x)
         x = tfl.dense(x, 1024, activation=tf.nn.relu, name='fc1')
