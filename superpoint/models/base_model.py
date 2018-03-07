@@ -2,8 +2,9 @@ from abc import ABCMeta, abstractmethod
 import tensorflow as tf
 import numpy as np
 from tqdm import tqdm
+import itertools
 
-# TODO: implement multi-gpus training (cf. cifar loss tower)
+# TODO: multi-GPU evaluation, prediction ?
 
 
 class Mode:
@@ -16,10 +17,10 @@ class BaseModel(metaclass=ABCMeta):
     dataset_names = set(['training', 'validation', 'test'])
     required_baseconfig = ['batch_size', 'learning_rate']
 
-    def __init__(self, data={}, use_gpu=True, data_shape=None, **config):
+    def __init__(self, data={}, n_gpus=1, data_shape=None, **config):
         self.datasets = data
         self.data_shape = data_shape
-        self.use_gpu = use_gpu
+        self.n_gpus = n_gpus
         self.graph = tf.get_default_graph()
         self.name = self.__class__.__name__.lower()  # get child name
 
@@ -32,69 +33,117 @@ class BaseModel(metaclass=ABCMeta):
             assert r in self.config, 'Required configuration entry: \'{}\''.format(r)
         assert set(self.datasets) <= self.dataset_names, \
             'Unknown dataset name: {}'.format(set(self.datasets)-self.dataset_names)
-        assert self.datasets or (data_shape is not None)
+        assert self.datasets or (data_shape is not None), 'Incompatibiity in data shape.'
+        assert n_gpus > 0, 'TODO: CPU-only training is currently not supported.'
 
         with tf.variable_scope(self.name, reuse=tf.AUTO_REUSE):
             self._build_graph()
 
     def _train_graph(self, data):
-        with tf.name_scope('train'):
-            net_outputs = self._model(data, Mode.TRAIN, training=True, **self.config)
-            self.loss = self._loss(net_outputs, data, **self.config)
-            tf.summary.scalar('loss', self.loss)
+        # Split the batch between the GPUs (data parallelism)
+        with tf.device('/cpu:0'):
+            shards = {d: tf.unstack(v, num=self.config['batch_size']*self.n_gpus, axis=0)
+                      for d, v in data.items()}
+            shards = [{d: tf.stack(v[i::self.n_gpus]) for d, v in shards.items()}
+                      for i in range(self.n_gpus)]
 
+        # Create towers, i.e. copies of the model for each GPU,
+        # with their own loss and gradients.
+        tower_losses = []
+        tower_gradvars = []
+        for i in range(self.n_gpus):
+            worker = '/gpu:{}'.format(i)
+            device_setter = tf.train.replica_device_setter(
+                    worker_device=worker, ps_device='/cpu:0', ps_tasks=1)
+            with tf.name_scope('train_{}'.format(i)) as scope:
+                with tf.device(device_setter):
+                    net_outputs = self._model(
+                            shards[i], Mode.TRAIN, training=True, **self.config)
+                    loss = self._loss(net_outputs, shards[i], **self.config)
+                    loss += tf.reduce_sum(
+                            tf.get_collection(tf.GraphKeys.REGULARIZATION_LOSSES, scope))
+                    model_params = tf.trainable_variables()
+                    grad = tf.gradients(loss, model_params)
+                    tower_losses.append(loss)
+                    tower_gradvars.append(zip(grad, model_params))
+                    if i == 0:
+                        update_ops = tf.get_collection(tf.GraphKeys.UPDATE_OPS, scope)
+
+        # Perform the consolidation on CPU
+        gradvars = []
+        with tf.device('/cpu:0'):
+            # Average losses and gradients
+            with tf.name_scope('tower_averaging'):
+                all_grads = {}
+                for grad, var in itertools.chain(*tower_gradvars):
+                    if grad is not None:
+                        all_grads.setdefault(var, []).append(grad)
+                for var, grads in all_grads.items():
+                    if len(grads) == 1:
+                        avg_grad = grads[0]
+                    else:
+                        avg_grad = tf.multiply(tf.add_n(grads), 1. / len(grads))
+                    gradvars.append((avg_grad, var))
+                self.loss = tf.reduce_mean(tower_losses)
+                tf.summary.scalar('loss', self.loss)
+
+            # Create optimizer ops
+            self.global_step = tf.Variable(0, trainable=False, name='global_step')
+            opt = tf.train.RMSPropOptimizer(self.config['learning_rate'])
+            with tf.control_dependencies(update_ops):
+                self.trainer = opt.apply_gradients(
+                        gradvars, global_step=self.global_step)
+
+    # TODO: create pred tower for eval
     def _eval_graph(self, data):
         with tf.name_scope('eval'):
-            net_outputs = self._model(data, Mode.EVAL, training=False, **self.config)
-            self.metrics = self._metrics(net_outputs, data, **self.config)
+            with tf.device('/gpu:0'):
+                net_outputs = self._model(data, Mode.EVAL, training=False, **self.config)
+                self.metrics = self._metrics(net_outputs, data, **self.config)
 
     def _pred_graph(self, data):
         with tf.name_scope('pred'):
-            self.pred_out = self._model(data, Mode.PRED, training=False, **self.config)
+            with tf.device('/gpu:0'):
+                self.pred_out = self._model(
+                        data, Mode.PRED, training=False, **self.config)
 
     def _build_graph(self):
         # Training and evaluation network, if tf datasets provided
         if self.datasets:
             # Generate iterators for the given tf datasets
             self.dataset_iterators = {}
-            for n, d in self.datasets.items():
-                if n == 'training':
-                    d = d.repeat().batch(self.config['batch_size'])
-                    self.dataset_iterators[n] = d.make_one_shot_iterator()
-                else:
-                    d = d.batch(self.config.get('eval_batch_size', 1))
-                    self.dataset_iterators[n] = d.make_initializable_iterator()
-                output_types = d.output_types
-                output_shapes = d.output_shapes
-                self.datasets[n] = d
+            with tf.device('/cpu:0'):
+                for n, d in self.datasets.items():
+                    if n == 'training':
+                        d = d.repeat().batch(self.config['batch_size']*self.n_gpus)
+                        self.dataset_iterators[n] = d.make_one_shot_iterator()
+                    else:
+                        d = d.batch(self.config.get('eval_batch_size', 1))
+                        self.dataset_iterators[n] = d.make_initializable_iterator()
+                    output_types = d.output_types
+                    output_shapes = d.output_shapes
+                    self.datasets[n] = d
 
-                # Perform compatibility checks with the inputs of the child model
-                for i, spec in self.input_spec.items():
-                    assert i in output_shapes
-                    tf.TensorShape(output_shapes[i]).assert_is_compatible_with(
-                            tf.TensorShape(spec['shape']))
+                    # Perform compatibility checks with the inputs of the child model
+                    for i, spec in self.input_spec.items():
+                        assert i in output_shapes
+                        tf.TensorShape(output_shapes[i]).assert_is_compatible_with(
+                                tf.TensorShape(spec['shape']))
 
-            # Used for input shapes of the prediction network
-            if self.data_shape is None:
-                self.data_shape = output_shapes
+                # Used for input shapes of the prediction network
+                if self.data_shape is None:
+                    self.data_shape = output_shapes
 
-            # Handle for the feedable iterator
-            self.handle = tf.placeholder(tf.string, shape=[])
-            iterator = tf.data.Iterator.from_string_handle(
-                    self.handle, output_types, output_shapes)
-            data = iterator.get_next()
+                # Handle for the feedable iterator
+                self.handle = tf.placeholder(tf.string, shape=[])
+                iterator = tf.data.Iterator.from_string_handle(
+                        self.handle, output_types, output_shapes)
+                data = iterator.get_next()
 
             # Build the actual training and evaluation models
             self._train_graph(data)
             self._eval_graph(data)
             self.summaries = tf.summary.merge_all()
-
-            # Create training ops
-            self.global_step = tf.Variable(0, trainable=False, name='global_step')
-            update_ops = tf.get_collection(tf.GraphKeys.UPDATE_OPS)
-            opt = tf.train.RMSPropOptimizer(self.config['learning_rate'])
-            with tf.control_dependencies(update_ops):
-                self.trainer = opt.minimize(self.loss, global_step=self.global_step)
 
         # Prediction network with feed_dict
         self.pred_in = {i: tf.placeholder(spec['type'], shape=self.data_shape[i])
@@ -102,8 +151,7 @@ class BaseModel(metaclass=ABCMeta):
         self._pred_graph(self.pred_in)
 
         # Start session
-        sess_config = tf.ConfigProto(
-                device_count={'GPU': 0} if not self.use_gpu else {})  # TODO: multi-gpus
+        sess_config = tf.ConfigProto(device_count={'GPU': self.n_gpus})
         sess_config.gpu_options.allow_growth = True
         self.sess = tf.Session(config=sess_config)
 
@@ -115,7 +163,8 @@ class BaseModel(metaclass=ABCMeta):
 
         self.sess.run([tf.global_variables_initializer(),
                        tf.local_variables_initializer()])
-        self.saver = tf.train.Saver(save_relative_paths=True)
+        with tf.device('/cpu:0'):
+            self.saver = tf.train.Saver(save_relative_paths=True)
         self.graph.finalize()
 
     def train(self, iterations, validation_interval=100, output_dir=None):

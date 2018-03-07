@@ -3,7 +3,6 @@ import yaml
 import os
 import sys
 import argparse
-import tensorflow as tf
 import numpy as np
 from contextlib import contextmanager
 from json import dumps as pprint
@@ -11,6 +10,10 @@ from json import dumps as pprint
 from superpoint.datasets import get_dataset
 from superpoint.models import get_model
 from superpoint.settings import EXPER_PATH
+
+os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'  # Bugfix for TF 1.4
+import tensorflow as tf  # noqa: E402
+
 
 # Dirty fix until update to 1.6
 if tf.__version__ == '1.4.0':
@@ -53,9 +56,11 @@ def set_seed(seed):
 @contextmanager
 def _init_graph(config, with_dataset=False):
     set_seed(config.get('seed', int.from_bytes(os.urandom(4), byteorder='big')))
+    n_gpus = len(os.environ['CUDA_VISIBLE_DEVICES'].split(','))
+    logging.info('Number of GPUs detected: {}'.format(n_gpus))
     dataset = get_dataset(config['data']['name'])(**config['data'])
     model = get_model(config['model']['name'])(
-            data=dataset.get_tf_datasets(), **config['model'])
+            data=dataset.get_tf_datasets(), n_gpus=n_gpus, **config['model'])
     model.__enter__()
     if with_dataset:
         yield model, dataset
