@@ -1,5 +1,5 @@
-def get_dataset(name):
-    mod = __import__('datasets.{}'.format(name), fromlist=[''])
+def get_model(name):
+    mod = __import__('models.{}'.format(name), fromlist=[''])
     return getattr(mod, _module_to_class(name))
 
 
