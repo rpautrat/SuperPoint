@@ -2,7 +2,7 @@ import cv2 as cv
 import numpy as np
 import math
 from scipy.spatial import ConvexHull
-from superpoint.utils import Bitset
+from superpoint.utils.bitset import Bitset
 
 
 class SyntheticDataset():
