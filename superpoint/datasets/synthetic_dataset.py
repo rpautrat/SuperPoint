@@ -134,9 +134,10 @@ class SyntheticDataset():
             new_segments = [((new_points[i][0], new_points[i][1]),
                              (new_points[i+1][0], new_points[i+1][1]))
                             for i in range(num_corners - 1)]
-            new_segments.append(((new_points[num_corners - 1][0], new_points[num_corners - 1][1]),
-                             (new_points[0][0], new_points[0][1])))
-            
+            new_segments.append(((new_points[num_corners - 1][0],
+                                  new_points[num_corners - 1][1]),
+                                 (new_points[0][0], new_points[0][1])))
+
             # Check that the polygon will not overlap with pre-existing shapes
             flag = False
             for seg in new_segments:
@@ -172,21 +173,21 @@ class SyntheticDataset():
             ax = int(max(np.random.rand() * min_dim, 15))  # semi axis of the ellipse
             ay = int(max(np.random.rand() * min_dim, 15))  # semi axis of the ellipse
             max_rad = max(ax, ay)
-            x = np.random.randint(max_rad, img.shape[1] - max_rad)  # center of the ellipse
+            x = np.random.randint(max_rad, img.shape[1] - max_rad)  # center
             y = np.random.randint(max_rad, img.shape[0] - max_rad)
-            
+
             # Check that the ellipsis will not overlap with pre-existing shapes
             flag = False
             for j in range(len(centers)):
                 if max_rad + rads[j] > math.sqrt((x - centers[j][0]) ** 2 +
-                                             (y - centers[j][1]) ** 2):
+                                                 (y - centers[j][1]) ** 2):
                     flag = True
                     break
             if flag:  # there is an overlap
                 continue
             centers.append((x, y))
             rads.append(max_rad)
-            
+
             col = self.get_random_color()
             angle = np.random.rand() * 90
             cv.ellipse(img, (x, y), (ax, ay), angle, 0, 360, (col, col, col), -1)

@@ -116,7 +116,7 @@ class Bitset(Sequence):
                                 pos = len(self) - position - 1
                                 results.append(bool(self.value & (1 << pos)))
                         return results
-                except:
+                except BaseException:
                         pos = len(self) - s - 1
                         return bool(self.value & (1 << pos))
 
@@ -135,7 +135,7 @@ class Bitset(Sequence):
                                         self.value &= ~(1 << pos)
                                 maximum_position = max((start + 1, stop, len(self)))
                                 self.length = maximum_position
-                except:
+                except BaseException:
                         pos = len(self) - s - 1
                         if value:
                                 self.value |= (1 << pos)
