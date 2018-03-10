@@ -12,15 +12,6 @@ class SyntheticDataset():
         """ Output a random scalar in grayscale """
         return np.random.randint(256)
 
-    def add_gaussian_noise(self, img, mean, var):
-        """ Take a background image and add a Gaussian noise """
-        noisy_img = img.copy()
-        cv.randn(noisy_img, mean, var)
-        noisy_img[:, :, 1] = noisy_img[:, :, 0]
-        noisy_img[:, :, 2] = noisy_img[:, :, 0]
-        noisy_img = cv.blur(noisy_img, (10, 10))
-        return noisy_img
-
     def add_salt_and_pepper(self, img):
         """ Add salt and pepper noise to an image """
         noise = np.zeros((img.shape[0], img.shape[1]), dtype=np.uint8)
@@ -30,7 +21,7 @@ class SyntheticDataset():
         noisy_img = img.copy()
         noisy_img[white > 0] = 255
         noisy_img[black > 0] = 0
-        noisy_img = cv.blur(noisy_img, (10, 10))
+        noisy_img = cv.blur(noisy_img, (5, 5))
         return noisy_img
 
     def generate_background(self, size):
@@ -47,6 +38,23 @@ class SyntheticDataset():
             cv.circle(img, (blobs[i][0], blobs[i][1]),
                       np.random.randint(20), (col, col, col), -1)
         kernel_size = np.random.randint(20, 100)
+        img = cv.blur(img, (kernel_size, kernel_size))
+        return img
+
+    def custom_background(self, size):
+        """ Generate a customized background to fill the shapes """
+        img = np.zeros(size, dtype=np.uint8)
+        nb_blobs = 1000
+        col1 = self.get_random_color()
+        img = img + col1
+        blobs = np.concatenate([np.random.randint(0, size[1], size=(nb_blobs, 1)),
+                                np.random.randint(0, size[0], size=(nb_blobs, 1))],
+                               axis=1)
+        for i in range(nb_blobs):
+            col = self.get_random_color()
+            cv.circle(img, (blobs[i][0], blobs[i][1]),
+                      np.random.randint(5), (col, col, col), -1)
+        kernel_size = np.random.randint(10, 20)
         img = cv.blur(img, (kernel_size, kernel_size))
         return img
 
@@ -108,25 +116,13 @@ class SyntheticDataset():
     def draw_multiple_polygons(self, img):
         """ Draw multiple polygons with a random number of corners (between 3 and 5)
         and return the corner points """
-        centers = []
-        rads = []
+        segments = []
         points = np.array([[]])
-        for i in range(20):  # at most 20 polygons (if no overlap)
+        for i in range(30):
             num_corners = np.random.randint(3, 6)
             rad = max(np.random.rand() * min(img.shape[0] / 2, img.shape[1] / 2), 30)
             x = np.random.randint(rad, img.shape[1] - rad)  # Center of a circle
             y = np.random.randint(rad, img.shape[0] - rad)
-            # Check that the polygon will not overlap with pre-existing shapes
-            flag = False
-            for j in range(len(centers)):
-                if rad + rads[j] > math.sqrt((x - centers[j][0]) ** 2 +
-                                             (y - centers[j][1]) ** 2):
-                    flag = True
-                    break
-            if flag:  # there is an overlap
-                continue
-            centers.append((x, y))
-            rads.append(rad)
             # Sample num_corners points inside the circle
             slices = np.linspace(0, 2 * math.pi, num_corners + 1)
             angles = [slices[i] + np.random.rand() * (slices[i+1] - slices[i])
@@ -135,26 +131,65 @@ class SyntheticDataset():
                            int(y + max(np.random.rand(), 0.5) * rad * math.sin(a))]
                           for a in angles]
             new_points = np.array(new_points)
+            new_segments = [((new_points[i][0], new_points[i][1]),
+                             (new_points[i+1][0], new_points[i+1][1]))
+                            for i in range(num_corners - 1)]
+            new_segments.append(((new_points[num_corners - 1][0], new_points[num_corners - 1][1]),
+                             (new_points[0][0], new_points[0][1])))
+            
+            # Check that the polygon will not overlap with pre-existing shapes
+            flag = False
+            for seg in new_segments:
+                for prev_seg in segments:
+                    if self.intersect(seg[0], seg[1], prev_seg[0], prev_seg[1]):
+                        flag = True
+                        break
+                if flag:
+                    break
+            if flag:  # there is an overlap
+                continue
+            segments = segments + new_segments
+
+            # Color the polygon with a custom background
             corners = new_points.reshape((-1, 1, 2))
-            col = self.get_random_color()
-            cv.fillPoly(img, [corners], (col, col, col))
+            mask = np.zeros(img.shape, np.uint8)
+            custom_background = self.custom_background(img.shape)
+            cv.fillPoly(mask, [corners], (255, 255, 255))
+            locs = np.where(mask != 0)
+            img[locs[0], locs[1]] = custom_background[locs[0], locs[1]]
             if points.shape == (1, 0):
                 points = new_points
             else:
                 points = np.concatenate([points, new_points], axis=0)
         return points
 
-    def draw_ellipse(self, img):
-        """ Draw an ellipse """
-        min_dim = min(img.shape[0], img.shape[1]) / 2
-        col = self.get_random_color()
-        ax = int(max(np.random.rand() * min_dim, 30))  # semi axis of the ellipse
-        ay = int(max(np.random.rand() * min_dim, 30))  # semi axis of the ellipse
-        max_rad = max(ax, ay)
-        x = np.random.randint(max_rad, img.shape[1] - max_rad)  # center of the ellipse
-        y = np.random.randint(max_rad, img.shape[0] - max_rad)
-        angle = np.random.rand() * 2*math.pi
-        cv.ellipse(img, (x, y), (ax, ay), angle, 0, 360, (col, col, col), -1)
+    def draw_ellipses(self, img):
+        """ Draw several ellipses """
+        centers = []
+        rads = []
+        min_dim = min(img.shape[0], img.shape[1]) / 4
+        for i in range(20):  # at most 20 ellipses (if no overlap)
+            ax = int(max(np.random.rand() * min_dim, 15))  # semi axis of the ellipse
+            ay = int(max(np.random.rand() * min_dim, 15))  # semi axis of the ellipse
+            max_rad = max(ax, ay)
+            x = np.random.randint(max_rad, img.shape[1] - max_rad)  # center of the ellipse
+            y = np.random.randint(max_rad, img.shape[0] - max_rad)
+            
+            # Check that the ellipsis will not overlap with pre-existing shapes
+            flag = False
+            for j in range(len(centers)):
+                if max_rad + rads[j] > math.sqrt((x - centers[j][0]) ** 2 +
+                                             (y - centers[j][1]) ** 2):
+                    flag = True
+                    break
+            if flag:  # there is an overlap
+                continue
+            centers.append((x, y))
+            rads.append(max_rad)
+            
+            col = self.get_random_color()
+            angle = np.random.rand() * 90
+            cv.ellipse(img, (x, y), (ax, ay), angle, 0, 360, (col, col, col), -1)
         return np.array([])
 
     def draw_star(self, img):
@@ -202,11 +237,12 @@ class SyntheticDataset():
         # Warp the grid using an affine transformation
         # The parameters of the affine transformation are a bit constrained
         # to get transformations not too far-fetched
-        affine_transform = np.array([[max(np.random.rand(), 0.7),
-                                      min(np.random.rand(), 0.3),
+        scale = 0.5 + np.random.rand() * 1.5
+        affine_transform = np.array([[scale * max(np.random.rand(), 0.7),
+                                      scale * min(np.random.rand(), 0.3),
                                       np.random.randint(50)],
-                                     [min(np.random.rand(), 0.3),
-                                      max(np.random.rand(), 0.7),
+                                     [scale * min(np.random.rand(), 0.3),
+                                      scale * max(np.random.rand(), 0.7),
                                       np.random.randint(50)]])
         warped_board = np.transpose(cv.warpAffine(board,
                                                   affine_transform,
@@ -323,19 +359,31 @@ class SyntheticDataset():
         points = np.array(new_points)
         return points
 
+    def gaussian_noise(self, img):
+        """ Apply Gaussian noise to the image """
+        mean = 128
+        var = 100
+        cv.randn(img, mean, var)
+        img[:, :, 1] = img[:, :, 0]
+        img[:, :, 2] = img[:, :, 0]
+        img = cv.blur(img, (2, 2))
+        return np.array([])
+
     def draw_shape(self, img):
         """ Draw a shape randomly """
-        idx = np.random.randint(6)
+        idx = np.random.randint(7)
         if idx == 0:
             return self.draw_lines(img)
         if idx == 1:
             return self.draw_multiple_polygons(img)
         if idx == 2:
-            return self.draw_ellipse(img)
+            return self.draw_ellipses(img)
         if idx == 3:
             return self.draw_star(img)
         if idx == 4:
             return self.draw_checkerboard(img)
+        if idx == 5:
+            return self.gaussian_noise(img)
         else:
             return self.draw_cube(img)
 
