@@ -1,7 +1,6 @@
 import logging
 import yaml
 import os
-import sys
 import argparse
 import numpy as np
 from contextlib import contextmanager
@@ -9,6 +8,7 @@ from json import dumps as pprint
 
 from superpoint.datasets import get_dataset
 from superpoint.models import get_model
+from superpoint.utils.stdout_capturing import capture_outputs
 from superpoint.settings import EXPER_PATH
 
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'  # Bugfix for TF 1.4
@@ -18,6 +18,10 @@ import tensorflow as tf  # noqa: E402
 # Dirty fix until update to 1.6
 if tf.__version__ == '1.4.0':
     tf.logging._logger.removeHandler(tf.logging._handler)
+
+logging.basicConfig(format='[%(asctime)s %(levelname)s] %(message)s',
+                    datefmt='%m/%d/%Y %H:%M:%S',
+                    level=logging.INFO)
 
 
 def train(config, n_iter, output_dir, checkpoint_name='model.ckpt'):
@@ -58,6 +62,7 @@ def _init_graph(config, with_dataset=False):
     set_seed(config.get('seed', int.from_bytes(os.urandom(4), byteorder='big')))
     n_gpus = len(os.environ['CUDA_VISIBLE_DEVICES'].split(','))
     logging.info('Number of GPUs detected: {}'.format(n_gpus))
+
     dataset = get_dataset(config['data']['name'])(**config['data'])
     model = get_model(config['model']['name'])(
             data=dataset.get_tf_datasets(), n_gpus=n_gpus, **config['model'])
@@ -70,46 +75,19 @@ def _init_graph(config, with_dataset=False):
     tf.reset_default_graph()
 
 
-def _set_logging(output_dir=None):
-    logger = logging.getLogger()
-    logger.setLevel(logging.INFO)
-    formatter = logging.Formatter(
-            '[%(asctime)s %(levelname)s] %(message)s', datefmt='%m/%d/%Y %H:%M:%S')
-    h = logging.StreamHandler(sys.stdout)
-    h.setFormatter(formatter)
-    logger.addHandler(h)
-    if output_dir:
-        h = logging.FileHandler(os.path.join(output_dir, 'log'))
-        h.setFormatter(formatter)
-        logger.addHandler(h)
-
-
-def _cli_train(config, args):
+def _cli_train(config, output_dir, args):
     assert 'train_iter' in config
-    output_dir = os.path.join(EXPER_PATH, args.exper_name)
-    if os.path.exists(output_dir):
-        raise ValueError('An experiment named {} already exists'.format(args.exper_name))
-    os.mkdir(output_dir)
-    _set_logging(output_dir)
-    logging.info('TRAINING')
 
     with open(os.path.join(output_dir, 'config.yml'), 'w') as f:
         yaml.dump(config, f, default_flow_style=False)
-
     train(config, config['train_iter'], output_dir)
+
     if args.eval:
         _cli_eval(config, args)
-    return output_dir
 
 
-def _cli_eval(config, args):
-    output_dir = os.path.join(EXPER_PATH, args.exper_name)
-    if not os.path.exists(output_dir):
-        raise ValueError('Cannot find directory for experiment named {}'.format(
-            args.exper_name))
-    _set_logging(output_dir)
-    logging.info('EVALUATION')
-
+# TODO: load model config from output_dir, selectively overwrite with new config
+def _cli_eval(config, output_dir, args):
     results = evaluate(config, output_dir, n_iter=config.get('eval_iter'))
 
     # Print and export results
@@ -120,7 +98,6 @@ def _cli_eval(config, args):
         for r, v in results.items():
             f.write('\t{}:\n\t\t{}\n'.format(r, v))
         f.write('\n')
-    return output_dir
 
 
 # TODO
@@ -130,7 +107,7 @@ def _cli_pred(config, args):
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
-    subparsers = parser.add_subparsers()
+    subparsers = parser.add_subparsers(dest='command')
 
     # Training command
     p_train = subparsers.add_parser('train')
@@ -154,7 +131,10 @@ if __name__ == '__main__':
     args = parser.parse_args()
     with open(args.config, 'r') as f:
         config = yaml.load(f)
-    args.func(config, args)
+    output_dir = os.path.join(EXPER_PATH, args.exper_name)
+    if not os.path.exists(output_dir):
+        os.mkdir(output_dir)
 
-else:
-    _set_logging()
+    with capture_outputs(os.path.join(output_dir, 'log')):
+        logging.info('Running command {}'.format(args.command.upper()))
+        args.func(config, output_dir, args)

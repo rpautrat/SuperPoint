@@ -241,6 +241,8 @@ class BaseModel(metaclass=ABCMeta):
     def load(self, checkpoint_path, last=True):
         if last:
             checkpoint_path = tf.train.latest_checkpoint(checkpoint_path)
+            if checkpoint_path is None:
+                raise ValueError('Checkpoint directory is empty.')
         self.saver.restore(self.sess, checkpoint_path)
 
     def save(self, checkpoint_path):

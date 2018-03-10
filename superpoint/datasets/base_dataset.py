@@ -1,7 +1,5 @@
 import tensorflow as tf
 
-# TODO: force all ops on CPU
-
 
 class BaseDataset:
     set_names = ['training', 'validation', 'test']
@@ -15,12 +13,11 @@ class BaseDataset:
 
         self.tf_datasets = {}
         self.tf_next = {}
-        for t in self.set_names:
-            self.tf_datasets[t] = self._get_data(self.dataset, t, **self.config)
-            self.tf_next[t] = self.tf_datasets[t].make_one_shot_iterator().get_next()
+        with tf.device('/cpu:0'):
+            for t in self.set_names:
+                self.tf_datasets[t] = self._get_data(self.dataset, t, **self.config)
+                self.tf_next[t] = self.tf_datasets[t].make_one_shot_iterator().get_next()
 
-        # TODO: do we really need to control the GPU alocation for this session ?
-        # self.sess = tf.Session(config=tf.ConfigProto(device_count={'GPU': 0}))
         self.sess = tf.Session()
 
     def get_tf_datasets(self):
