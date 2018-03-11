@@ -14,12 +14,12 @@ class Mnist(BaseDataset):
                                          reshape=False,
                                          validation_size=config['validation_size'])
 
-    def _get_data(self, dataset, set_name, **config):
-        if set_name == 'training':
+    def _get_data(self, dataset, split_name, **config):
+        if split_name == 'training':
             data = dataset.train
-        elif set_name == 'validation':
+        elif split_name == 'validation':
             data = dataset.validation
-        elif set_name == 'test':
+        elif split_name == 'test':
             data = dataset.test
 
         data = tf.data.Dataset.from_tensor_slices(
