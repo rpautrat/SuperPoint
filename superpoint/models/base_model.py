@@ -282,7 +282,12 @@ class BaseModel(metaclass=ABCMeta):
             data = {d: [v] for d, v in data.items()}
         feed = {self.pred_in[i]: data[i] for i in self.input_spec}
         pred = self.sess.run(op, feed_dict=feed)
-        return pred if batch else pred[0]
+        if not batch:  # remove batch dimension
+            if isinstance(pred, dict):
+                pred = {p: v[0] for p, v in pred.items()}
+            else:
+                pred = pred[0]
+        return pred
 
     def evaluate(self, dataset, max_iterations=None, mute=False):
         assert dataset in self.datasets
