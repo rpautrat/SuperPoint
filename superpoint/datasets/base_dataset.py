@@ -39,8 +39,8 @@ class BaseDataset(metaclass=ABCMeta):
     def _get_data(self, dataset, split_name, **config):
         """Reads the dataset splits using the Tensorflow `tf.data` API.
 
-        This method creates a `tf.data.Dataset` object for the given data split, with
-        named components defined through a dictionary mapping strings to tensors.
+        This method should create a `tf.data.Dataset` object for the given data split,
+        with named components defined through a dictionary mapping strings to tensors.
 
         It typically performs operations such as reading data from a file or from a
         Python generator, shuffling the elements or applying data augmentation to the
@@ -57,6 +57,42 @@ class BaseDataset(metaclass=ABCMeta):
         """
         raise NotImplementedError
 
+    def get_tf_datasets(self):
+        """"Exposes data splits consistent with the Tensorflow `tf.data` API.
+
+        Returns:
+            A dictionary mapping split names (`str`, either `"training"`, `"validation"`,
+            or `"test"`) to `tf.data.Dataset` objects.
+        """
+        return self.tf_splits
+
+    def get_training_set(self):
+        """Processed training set.
+
+        Returns:
+            A generator of elements from the training set as dictionaries mapping
+            component names to the corresponding data (e.g. Numpy array).
+        """
+        return self._get_set_generator('training')
+
+    def get_validation_set(self):
+        """Processed validation set.
+
+        Returns:
+            A generator of elements from the training set as dictionaries mapping
+            component names to the corresponding data (e.g. Numpy array).
+        """
+        return self._get_set_generator('validation')
+
+    def get_test_set(self):
+        """Processed test set.
+
+        Returns:
+            A generator of elements from the training set as dictionaries mapping
+            component names to the corresponding data (e.g. Numpy array).
+        """
+        return self._get_set_generator('test')
+
     def __init__(self, **config):
         # Update config
         self.config = getattr(self, 'default_config', {})
@@ -72,18 +108,6 @@ class BaseDataset(metaclass=ABCMeta):
                 self.tf_next[n] = self.tf_splits[n].make_one_shot_iterator().get_next()
 
         self.sess = tf.Session()
-
-    def get_tf_datasets(self):
-        return self.tf_splits
-
-    def get_training_set(self):
-        return self._get_set_generator('training')
-
-    def get_validation_set(self):
-        return self._get_set_generator('validation')
-
-    def get_test_set(self):
-        return self._get_set_generator('test')
 
     def _get_set_generator(self, set_name):
         while True:
