@@ -83,11 +83,16 @@ def _cli_train(config, output_dir, args):
     train(config, config['train_iter'], output_dir)
 
     if args.eval:
-        _cli_eval(config, args)
+        _cli_eval(config, output_dir, args)
 
 
-# TODO: load model config from output_dir, selectively overwrite with new config
 def _cli_eval(config, output_dir, args):
+    # Load model config from previous experiment
+    with open(os.path.join(output_dir, 'config.yml'), 'r') as f:
+        model_config = yaml.load(f)['model']
+    model_config.update(config.get('model', {}))
+    config['model'] = model_config
+
     results = evaluate(config, output_dir, n_iter=config.get('eval_iter'))
 
     # Print and export results
