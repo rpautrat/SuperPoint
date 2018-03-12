@@ -117,7 +117,7 @@ class BaseModel(metaclass=ABCMeta):
         with tf.variable_scope(self.name, reuse=tf.AUTO_REUSE):
             self._build_graph()
 
-    def _train_graph(self, data):
+    def _gpu_tower(self, data, mode):
         # Split the batch between the GPUs (data parallelism)
         with tf.device('/cpu:0'):
             shards = {d: tf.unstack(v, num=self.config['batch_size']*self.n_gpus, axis=0)
@@ -129,23 +129,42 @@ class BaseModel(metaclass=ABCMeta):
         # with their own loss and gradients.
         tower_losses = []
         tower_gradvars = []
+        tower_preds = []
+        tower_metrics = []
         for i in range(self.n_gpus):
             worker = '/gpu:{}'.format(i)
             device_setter = tf.train.replica_device_setter(
                     worker_device=worker, ps_device='/cpu:0', ps_tasks=1)
-            with tf.name_scope('train_{}'.format(i)) as scope:
+            with tf.name_scope('{}_{}'.format(mode, i)) as scope:
                 with tf.device(device_setter):
-                    net_outputs = self._model(
-                            shards[i], Mode.TRAIN, training=True, **self.config)
-                    loss = self._loss(net_outputs, shards[i], **self.config)
-                    loss += tf.reduce_sum(
-                            tf.get_collection(tf.GraphKeys.REGULARIZATION_LOSSES, scope))
-                    model_params = tf.trainable_variables()
-                    grad = tf.gradients(loss, model_params)
-                    tower_losses.append(loss)
-                    tower_gradvars.append(zip(grad, model_params))
-                    if i == 0:
-                        update_ops = tf.get_collection(tf.GraphKeys.UPDATE_OPS, scope)
+                    net_outputs = self._model(shards[i], mode, **self.config)
+                    if mode == Mode.TRAIN:
+                        loss = self._loss(net_outputs, shards[i], **self.config)
+                        loss += tf.reduce_sum(
+                                tf.get_collection(tf.GraphKeys.REGULARIZATION_LOSSES,
+                                                  scope))
+                        model_params = tf.trainable_variables()
+                        grad = tf.gradients(loss, model_params)
+                        tower_losses.append(loss)
+                        tower_gradvars.append(zip(grad, model_params))
+                        if i == 0:
+                            update_ops = tf.get_collection(tf.GraphKeys.UPDATE_OPS,
+                                                           scope)
+                    elif mode == Mode.EVAL:
+                        tower_metrics.append(self._metrics(
+                            net_outputs, shards[i], **self.config))
+                    else:
+                        tower_preds.append(net_outputs)
+
+        if mode == Mode.TRAIN:
+            return tower_losses, tower_gradvars, update_ops
+        elif mode == Mode.EVAL:
+            return tower_metrics
+        else:
+            return tower_preds
+
+    def _train_graph(self, data):
+        tower_losses, tower_gradvars, update_ops = self._gpu_tower(data, Mode.TRAIN)
 
         # Perform the consolidation on CPU
         gradvars = []
@@ -172,18 +191,16 @@ class BaseModel(metaclass=ABCMeta):
                 self.trainer = opt.apply_gradients(
                         gradvars, global_step=self.global_step)
 
-    # TODO: create pred tower for eval
     def _eval_graph(self, data):
-        with tf.name_scope('eval'):
-            with tf.device('/gpu:0'):
-                net_outputs = self._model(data, Mode.EVAL, training=False, **self.config)
-                self.metrics = self._metrics(net_outputs, data, **self.config)
+        tower_metrics = self._gpu_tower(data, Mode.EVAL)
+        with tf.device('/cpu:0'):
+            self.metrics = {m: tf.reduce_mean(tf.stack([t[m] for t in tower_metrics]))
+                            for m in tower_metrics[0]}
 
     def _pred_graph(self, data):
         with tf.name_scope('pred'):
             with tf.device('/gpu:0'):
-                self.pred_out = self._model(
-                        data, Mode.PRED, training=False, **self.config)
+                self.pred_out = self._model(data, Mode.PRED, **self.config)
 
     def _build_graph(self):
         # Training and evaluation network, if tf datasets provided
@@ -193,10 +210,12 @@ class BaseModel(metaclass=ABCMeta):
             with tf.device('/cpu:0'):
                 for n, d in self.datasets.items():
                     if n == 'training':
-                        d = d.repeat().batch(self.config['batch_size']*self.n_gpus)
+                        train_batch = self.config['batch_size']*self.n_gpus
+                        d = d.repeat().batch(train_batch).prefetch(train_batch)
                         self.dataset_iterators[n] = d.make_one_shot_iterator()
                     else:
-                        d = d.batch(self.config.get('eval_batch_size', 1))
+                        d = d.apply(tf.contrib.data.batch_and_drop_remainder(
+                            self.config.get('eval_batch_size', 1)*self.n_gpus))
                         self.dataset_iterators[n] = d.make_initializable_iterator()
                     output_types = d.output_types
                     output_shapes = d.output_shapes
