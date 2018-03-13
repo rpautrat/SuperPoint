@@ -8,9 +8,16 @@ from superpoint.utils.bitset import Bitset
 class SyntheticDataset():
     """ Methods for generating the synthetic dataset """
 
+    def __init__(self):
+        self.background_color = 0
+
     def get_random_color(self):
-        """ Output a random scalar in grayscale """
-        return np.random.randint(256)
+        """ Output a random scalar in grayscale with a least a small
+        contrast with the background color """
+        color = np.random.randint(256)
+        if abs(color - self.background_color) < 30:  # not enough contrast
+            color = (color + 128) % 256
+        return color
 
     def add_salt_and_pepper(self, img):
         """ Add salt and pepper noise to an image """
@@ -28,13 +35,13 @@ class SyntheticDataset():
         """ Generate a customized background image """
         img = np.zeros(size, dtype=np.uint8)
         nb_blobs = 100
-        col1 = self.get_random_color()
-        img = img + col1
+        self.background_color = np.random.randint(256)
+        img = img + self.background_color
         blobs = np.concatenate([np.random.randint(0, size[1], size=(nb_blobs, 1)),
                                 np.random.randint(0, size[0], size=(nb_blobs, 1))],
                                axis=1)
         for i in range(nb_blobs):
-            col = max(min(col1 + np.random.randint(-100, 100), 255), 0)
+            col = max(min(self.background_color + np.random.randint(-100, 100), 255), 0)
             cv.circle(img, (blobs[i][0], blobs[i][1]),
                       np.random.randint(20), (col, col, col), -1)
         kernel_size = np.random.randint(20, 100)
@@ -66,6 +73,16 @@ class SyntheticDataset():
         """ Return true if line segments AB and CD intersect """
         return(self.ccw(A, C, D) != self.ccw(B, C, D) and
                self.ccw(A, B, C) != self.ccw(A, B, D))
+
+    def keep_points_inside(self, points, size):
+        """ Keep only the points whose coordinates are inside the dimensions of
+        the image whose size is given """
+        new_points = []
+        for i in range(points.shape[0]):
+            if points[i][0] >= 0 and points[i][0] < size[1] and \
+               points[i][1] >= 0 and points[i][1] < size[0]:
+                new_points.append([points[i][0], points[i][1]])
+        return np.array(new_points)
 
     def draw_lines(self, img):
         """ Draw up to 10 random lines and output the positions of the endpoints """
@@ -253,18 +270,75 @@ class SyntheticDataset():
                                              axis=1))
         warped_points = np.transpose(np.dot(affine_transform, points))
         warped_points = warped_points.astype(int)
-        points = []  # keep only the points inside the image
-        for i in range((rows + 1) * (cols + 1)):
-            if warped_points[i][0] >= 0 and warped_points[i][0] < img.shape[0]\
-               and warped_points[i][1] >= 0 and warped_points[i][1] < img.shape[1]:
-                points.append([warped_points[i][1], warped_points[i][0]])
-        points = np.array(points)
+        warped_points[:, [0, 1]] = warped_points[:, [1, 0]]  # x and y have been inverted
         # cv.imshow("Warped checkerboard", warped_board)
 
         # Add the warped checkerboard to img
         mask = np.stack([warped_board, warped_board, warped_board], axis=2)
         locs = np.where(mask != 0)
         img[locs[0], locs[1]] = mask[locs[0], locs[1]]
+
+        # Keep only the points inside the image
+        points = self.keep_points_inside(warped_points, img.shape[:2])
+        return points
+
+    def draw_stripes(self, img):
+        """ Draw stripes in a distorted rectangle and output the interest points """
+        # Create the grid
+        board_size = (int(img.shape[0] * (1 + np.random.rand())),
+                      int(img.shape[1] * (1 + np.random.rand())))
+        board = np.zeros(board_size, np.uint8)
+        col = np.random.randint(5, 13)  # number of cols
+        cols = board_size[1] * np.random.rand(col - 1)
+        cols = np.concatenate([cols, np.array([0, board_size[1] - 1])], axis=0)
+        cols = np.unique(cols.astype(int))
+        # Remove the indices that are too close
+        cols_list = [cols[i] for i in range(cols.shape[0] - 1)
+                     if abs(cols[i] - cols[i+1]) > 5]
+        cols_list.append(cols[-1])
+        cols = np.array(cols_list)
+        col = cols.shape[0] - 1  # update the number of cols
+        points = [[0, c] for c in cols] + [[board_size[0] - 1, c] for c in cols]
+        points = np.array(points)
+        points[:, [0, 1]] = points[:, [1, 0]]  # x and y have been inverted
+
+        # Fill the rectangles
+        color = self.get_random_color()
+        for i in range(col):
+            color = (color + 128 + np.random.randint(-30, 30)) % 256
+            cv.rectangle(board, (points[i][0], points[i][1]),
+                         (points[i+col+2][0], points[i+col+2][1]),
+                         color, -1)
+        # cv.imshow("Stripes", board)
+
+        # Warp the grid using an affine transformation
+        # The parameters of the affine transformation are a bit constrained
+        # to get transformations not too far-fetched
+        scale = 0.5 + np.random.rand() * 0.5
+        affine_transform = np.array([[scale * max(np.random.rand(), 0.7),
+                                      scale * min(np.random.rand(), 0.3),
+                                      np.random.randint(50)],
+                                     [scale * min(np.random.rand(), 0.3),
+                                      scale * max(np.random.rand(), 0.7),
+                                      np.random.randint(50)]])
+        warped_board = np.transpose(cv.warpAffine(board,
+                                                  affine_transform,
+                                                  img.shape[0:2]))
+        points = np.transpose(np.concatenate((points,
+                                              np.ones((2 * (col + 1), 1))),
+                                             axis=1))
+        warped_points = np.transpose(np.dot(affine_transform, points))
+        warped_points = warped_points.astype(int)
+        warped_points[:, [0, 1]] = warped_points[:, [1, 0]]  # x and y have been inverted
+        # cv.imshow("Warped stripes", warped_board)
+
+        # Add the warped stripes to img
+        mask = np.stack([warped_board, warped_board, warped_board], axis=2)
+        locs = np.where(mask != 0)
+        img[locs[0], locs[1]] = mask[locs[0], locs[1]]
+
+        # Keep only the points inside the image
+        points = self.keep_points_inside(warped_points, img.shape[:2])
         return points
 
     def draw_cube(self, img):
@@ -273,9 +347,9 @@ class SyntheticDataset():
         # The order matters!
         # Two adjacent vertices differs only from one bit (as in Gray codes)
         min_dim = min(img.shape[:2])
-        lx = 30 + np.random.rand() * min_dim / 3  # dimensions of the cube
-        ly = 30 + np.random.rand() * min_dim / 3
-        lz = 30 + np.random.rand() * min_dim / 3
+        lx = 30 + np.random.rand() * min_dim / 2  # dimensions of the cube
+        ly = 30 + np.random.rand() * min_dim / 2
+        lz = 30 + np.random.rand() * min_dim / 2
         cube = np.array([[0, 0, 0],
                          [lx, 0, 0],
                          [0, ly, 0],
@@ -284,7 +358,7 @@ class SyntheticDataset():
                          [lx, 0, lz],
                          [0, ly, lz],
                          [lx, ly, lz]])
-        rot_angles = np.random.rand(3) * 2 * math.pi
+        rot_angles = np.random.rand(3) * 3 * math.pi / 10. + math.pi / 10.
         rotation_1 = np.array([[math.cos(rot_angles[0]), -math.sin(rot_angles[0]), 0],
                                [math.sin(rot_angles[0]), math.cos(rot_angles[0]), 0],
                                [0, 0, 1]])
@@ -294,9 +368,9 @@ class SyntheticDataset():
         rotation_3 = np.array([[math.cos(rot_angles[2]), 0, -math.sin(rot_angles[2])],
                                [0, 1, 0],
                                [math.sin(rot_angles[2]), 0, math.cos(rot_angles[2])]])
-        scaling = np.array([[0.3 + np.random.rand() * 0.7, 0, 0],
-                            [0, 0.3 + np.random.rand() * 0.7, 0],
-                            [0, 0, 0.3 + np.random.rand() * 0.7]])
+        scaling = np.array([[0.4 + np.random.rand() * 0.6, 0, 0],
+                            [0, 0.4 + np.random.rand() * 0.6, 0],
+                            [0, 0, 0.4 + np.random.rand() * 0.6]])
         trans = np.array([img.shape[1] / 2 + np.random.randint(-img.shape[1] / 5,
                                                                img.shape[1] / 5),
                           img.shape[0] / 2 + np.random.randint(-img.shape[0] / 5,
@@ -314,7 +388,7 @@ class SyntheticDataset():
         convex_hull = ConvexHull(cube)
         boundary = np.sort(convex_hull.vertices)
         bpoint = 0
-        for i in range(8):
+        for i in range(boundary.shape[0]):
             if i != boundary[i]:  # i is not on the boundary
                 bpoint = i
                 break
@@ -352,12 +426,7 @@ class SyntheticDataset():
                         (col_edge, col_edge, col_edge), thickness)
 
         # Keep only the points inside the image
-        new_points = []
-        for i in range(points.shape[0]):
-            if points[i][0] >= 0 and points[i][0] < img.shape[1] and \
-               points[i][1] >= 0 and points[i][1] < img.shape[0]:
-                new_points.append([points[i][0], points[i][1]])
-        points = np.array(new_points)
+        points = self.keep_points_inside(points, img.shape[:2])
         return points
 
     def gaussian_noise(self, img):
@@ -372,7 +441,7 @@ class SyntheticDataset():
 
     def draw_shape(self, img):
         """ Draw a shape randomly """
-        idx = np.random.randint(7)
+        idx = np.random.randint(8)
         if idx == 0:
             return self.draw_lines(img)
         if idx == 1:
@@ -385,6 +454,8 @@ class SyntheticDataset():
             return self.draw_checkerboard(img)
         if idx == 5:
             return self.gaussian_noise(img)
+        if idx == 6:
+            return self.draw_stripes(img)
         else:
             return self.draw_cube(img)
 
