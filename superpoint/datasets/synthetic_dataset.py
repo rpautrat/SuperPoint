@@ -43,7 +43,7 @@ class SyntheticDataset():
         for i in range(nb_blobs):
             col = max(min(self.background_color + np.random.randint(-100, 100), 255), 0)
             cv.circle(img, (blobs[i][0], blobs[i][1]),
-                      np.random.randint(20), (col, col, col), -1)
+                      np.random.randint(20), col, -1)
         kernel_size = np.random.randint(20, 100)
         img = cv.blur(img, (kernel_size, kernel_size))
         return img
@@ -60,7 +60,7 @@ class SyntheticDataset():
         for i in range(nb_blobs):
             col = self.get_random_color()
             cv.circle(img, (blobs[i][0], blobs[i][1]),
-                      np.random.randint(5), (col, col, col), -1)
+                      np.random.randint(5), col, -1)
         kernel_size = np.random.randint(10, 20)
         img = cv.blur(img, (kernel_size, kernel_size))
         return img
@@ -104,7 +104,7 @@ class SyntheticDataset():
                 continue
             segments.append(((x1, y1), (x2, y2)))
             col = self.get_random_color()
-            cv.line(img, (x1, y1), (x2, y2), (col, col, col), np.random.randint(1, 4))
+            cv.line(img, (x1, y1), (x2, y2), col, np.random.randint(1, 4))
             if points.shape == (1, 0):
                 points = np.array([[x1, y1], [x2, y2]])
             else:
@@ -127,7 +127,7 @@ class SyntheticDataset():
                            for a in angles])
         corners = points.reshape((-1, 1, 2))
         col = self.get_random_color()
-        cv.fillPoly(img, [corners], (col, col, col))
+        cv.fillPoly(img, [corners], col)
         return points
 
     def draw_multiple_polygons(self, img):
@@ -172,7 +172,7 @@ class SyntheticDataset():
             corners = new_points.reshape((-1, 1, 2))
             mask = np.zeros(img.shape, np.uint8)
             custom_background = self.custom_background(img.shape)
-            cv.fillPoly(mask, [corners], (255, 255, 255))
+            cv.fillPoly(mask, [corners], 255)
             locs = np.where(mask != 0)
             img[locs[0], locs[1]] = custom_background[locs[0], locs[1]]
             if points.shape == (1, 0):
@@ -207,7 +207,7 @@ class SyntheticDataset():
 
             col = self.get_random_color()
             angle = np.random.rand() * 90
-            cv.ellipse(img, (x, y), (ax, ay), angle, 0, 360, (col, col, col), -1)
+            cv.ellipse(img, (x, y), (ax, ay), angle, 0, 360, col, -1)
         return np.array([])
 
     def draw_star(self, img):
@@ -229,7 +229,7 @@ class SyntheticDataset():
             col = self.get_random_color()
             cv.line(img, (points[0][0], points[0][1]),
                     (points[i][0], points[i][1]),
-                    (col, col, col), thickness)
+                    col, thickness)
         return points
 
     def draw_checkerboard(self, img):
@@ -256,12 +256,14 @@ class SyntheticDataset():
         # The parameters of the affine transformation are a bit constrained
         # to get transformations not too far-fetched
         scale = 0.5 + np.random.rand() * 1.5
-        affine_transform = np.array([[scale * max(np.random.rand(), 0.7),
-                                      scale * min(np.random.rand(), 0.3),
-                                      np.random.randint(50)],
-                                     [scale * min(np.random.rand(), 0.3),
-                                      scale * max(np.random.rand(), 0.7),
-                                      np.random.randint(50)]])
+        angle = np.random.rand() * 2 * math.pi
+        affine_transform = [[scale * max(np.random.rand(), 0.6) * math.cos(angle),
+                             scale * min(np.random.rand(), 0.4) * math.sin(angle),
+                             rows * s / 2 + np.random.randint(-30, 30)],
+                            [- scale * min(np.random.rand(), 0.4) * math.sin(angle),
+                             scale * max(np.random.rand(), 0.6) * math.cos(angle),
+                             cols * s / 2 + np.random.randint(-30, 30)]]
+        affine_transform = np.array(affine_transform)
         warped_board = np.transpose(cv.warpAffine(board,
                                                   affine_transform,
                                                   img.shape[0:2]))
@@ -274,7 +276,7 @@ class SyntheticDataset():
         # cv.imshow("Warped checkerboard", warped_board)
 
         # Add the warped checkerboard to img
-        mask = np.stack([warped_board, warped_board, warped_board], axis=2)
+        mask = warped_board
         locs = np.where(mask != 0)
         img[locs[0], locs[1]] = mask[locs[0], locs[1]]
 
@@ -315,12 +317,18 @@ class SyntheticDataset():
         # The parameters of the affine transformation are a bit constrained
         # to get transformations not too far-fetched
         scale = 0.5 + np.random.rand() * 0.5
-        affine_transform = np.array([[scale * max(np.random.rand(), 0.7),
-                                      scale * min(np.random.rand(), 0.3),
-                                      np.random.randint(50)],
-                                     [scale * min(np.random.rand(), 0.3),
-                                      scale * max(np.random.rand(), 0.7),
-                                      np.random.randint(50)]])
+        angle = np.random.rand() * 2 * math.pi
+        affine_transform = [[scale * max(np.random.rand(), 0.6) * math.cos(angle),
+                             scale * min(np.random.rand(), 0.4) * math.sin(angle),
+                             board_size[0] / 3 + np.random.randint(-10, 10)],
+                            [- scale * min(np.random.rand(), 0.4) * math.sin(angle),
+                             scale * max(np.random.rand(), 0.6) * math.cos(angle),
+                             board_size[1] / 3 + np.random.randint(-10, 10)]]
+        affine_transform = np.array(affine_transform)
+        trans = np.array([[1, 0, - board_size[0] / 2],
+                          [0, 1, - board_size[1] / 2],
+                          [0, 0, 1]])
+        affine_transform = np.dot(affine_transform, trans)
         warped_board = np.transpose(cv.warpAffine(board,
                                                   affine_transform,
                                                   img.shape[0:2]))
@@ -333,7 +341,7 @@ class SyntheticDataset():
         # cv.imshow("Warped stripes", warped_board)
 
         # Add the warped stripes to img
-        mask = np.stack([warped_board, warped_board, warped_board], axis=2)
+        mask = warped_board
         locs = np.where(mask != 0)
         img[locs[0], locs[1]] = mask[locs[0], locs[1]]
 
@@ -416,14 +424,16 @@ class SyntheticDataset():
         col_face = self.get_random_color()
         for i in [0, 1, 2]:
             cv.fillPoly(img, [cube[faces[i]].reshape((-1, 1, 2))],
-                        (col_face, col_face, col_face))
-        col_edge = (col_face + 128) % 256  # color that constrats with the face color
+                        col_face)
         thickness = np.random.randint(1, 3)
         for i in [0, 1, 2]:
             for j in [0, 1, 2, 3]:
+                col_edge = (col_face + 128
+                            + np.random.randint(-64, 64))\
+                            % 256  # color that constrats with the face color
                 cv.line(img, (cube[faces[i][j], 0], cube[faces[i][j], 1]),
                         (cube[faces[i][(j + 1) % 4], 0], cube[faces[i][(j + 1) % 4], 1]),
-                        (col_edge, col_edge, col_edge), thickness)
+                        col_edge, thickness)
 
         # Keep only the points inside the image
         points = self.keep_points_inside(points, img.shape[:2])
@@ -434,8 +444,6 @@ class SyntheticDataset():
         mean = 128
         var = 100
         cv.randn(img, mean, var)
-        img[:, :, 1] = img[:, :, 0]
-        img[:, :, 2] = img[:, :, 0]
         img = cv.blur(img, (2, 2))
         return np.array([])
 
@@ -460,6 +468,8 @@ class SyntheticDataset():
             return self.draw_cube(img)
 
     def draw_interest_points(self, img, points):
-        """ Draw in green the interest points """
+        """ Convert img in RGB and draw in green the interest points """
+        img_rgb = np.stack([img, img, img], axis=2)
         for i in range(points.shape[0]):
-            cv.circle(img, (points[i][0], points[i][1]), 2, (0, 255, 0), 1)
+            cv.circle(img_rgb, (points[i][0], points[i][1]), 2, (0, 255, 0), 1)
+        return img_rgb
