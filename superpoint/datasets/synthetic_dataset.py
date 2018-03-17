@@ -77,18 +77,18 @@ class SyntheticDataset():
     def keep_points_inside(self, points, size):
         """ Keep only the points whose coordinates are inside the dimensions of
         the image whose size is given """
-        new_points = []
+        new_points = np.empty((0, 2), dtype=np.int)
         for i in range(points.shape[0]):
             if points[i][0] >= 0 and points[i][0] < size[1] and \
                points[i][1] >= 0 and points[i][1] < size[0]:
-                new_points.append([points[i][0], points[i][1]])
+                np.concatenate([new_points, np.array([points[i]])], axis=0)
         return np.array(new_points)
 
     def draw_lines(self, img):
         """ Draw up to 10 random lines and output the positions of the endpoints """
         num_lines = np.random.randint(1, 10)
         segments = []
-        points = np.array([[]])
+        points = np.empty((0, 2), dtype=np.int)
         for i in range(num_lines):
             x1 = np.random.randint(img.shape[1])
             y1 = np.random.randint(img.shape[0])
@@ -105,10 +105,7 @@ class SyntheticDataset():
             segments.append(((x1, y1), (x2, y2)))
             col = self.get_random_color()
             cv.line(img, (x1, y1), (x2, y2), col, np.random.randint(1, 4))
-            if points.shape == (1, 0):
-                points = np.array([[x1, y1], [x2, y2]])
-            else:
-                points = np.concatenate([points, np.array([[x1, y1], [x2, y2]])], axis=0)
+            points = np.concatenate([points, np.array([[x1, y1], [x2, y2]])], axis=0)
         return points
 
     def draw_polygon(self, img):
@@ -134,7 +131,7 @@ class SyntheticDataset():
         """ Draw multiple polygons with a random number of corners (between 3 and 5)
         and return the corner points """
         segments = []
-        points = np.array([[]])
+        points = np.empty((0, 2), dtype=np.int)
         for i in range(30):
             num_corners = np.random.randint(3, 6)
             rad = max(np.random.rand() * min(img.shape[0] / 2, img.shape[1] / 2), 30)
@@ -175,10 +172,7 @@ class SyntheticDataset():
             cv.fillPoly(mask, [corners], 255)
             locs = np.where(mask != 0)
             img[locs[0], locs[1]] = custom_background[locs[0], locs[1]]
-            if points.shape == (1, 0):
-                points = new_points
-            else:
-                points = np.concatenate([points, new_points], axis=0)
+            points = np.concatenate([points, new_points], axis=0)
         return points
 
     def draw_ellipses(self, img):
@@ -208,7 +202,7 @@ class SyntheticDataset():
             col = self.get_random_color()
             angle = np.random.rand() * 90
             cv.ellipse(img, (x, y), (ax, ay), angle, 0, 360, col, -1)
-        return np.array([])
+        return np.empty((0, 2), dtype=np.int)
 
     def draw_star(self, img):
         """ Draw a star with between 3 and 5 branches and output the interest points """
@@ -445,7 +439,7 @@ class SyntheticDataset():
         var = 100
         cv.randn(img, mean, var)
         img = cv.blur(img, (2, 2))
-        return np.array([])
+        return np.empty((0, 2), dtype=np.int)
 
     def draw_shape(self, img):
         """ Draw a shape randomly """
