@@ -35,7 +35,7 @@ def train(config, n_iter, output_dir, checkpoint_name='model.ckpt'):
 
 def evaluate(config, output_dir, n_iter=None):
     with _init_graph(config) as net:
-        net.load(output_dir, last=True)
+        net.load(output_dir)
         results = net.evaluate(config.get('eval_set', 'test'), max_iterations=n_iter)
     return results
 
@@ -44,7 +44,7 @@ def predict(config, output_dir, n_iter):
     pred = []
     data = []
     with _init_graph(config, with_dataset=True) as (net, dataset):
-        net.load(output_dir, last=True)
+        net.load(output_dir)
         test_set = dataset.get_test_set()
         for _ in range(n_iter):
             data.append(next(test_set))
