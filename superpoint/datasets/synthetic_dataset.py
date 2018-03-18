@@ -1,8 +1,6 @@
 import cv2 as cv
 import numpy as np
 import math
-from scipy.spatial import ConvexHull
-from superpoint.utils.bitset import Bitset
 
 
 class SyntheticDataset():
@@ -65,44 +63,45 @@ class SyntheticDataset():
         img = cv.blur(img, (kernel_size, kernel_size))
         return img
 
-    def ccw(self, A, B, C):
+    def ccw(self, A, B, C, dim):
         """ Check if the points are listed in counter-clockwise order """
-        return (C[1] - A[1]) * (B[0] - A[0]) > (B[1] - A[1]) * (C[0] - A[0])
+        if dim == 2:  # only 2 dimensions
+            return((C[:, 1] - A[:, 1]) * (B[:, 0] - A[:, 0])
+                   > (B[:, 1] - A[:, 1]) * (C[:, 0] - A[:, 0]))
+        else:  # dim should be equal to 3
+            return((C[:, 1, :] - A[:, 1, :])
+                   * (B[:, 0, :] - A[:, 0, :])
+                   > (B[:, 1, :] - A[:, 1, :])
+                   * (C[:, 0, :] - A[:, 0, :]))
 
-    def intersect(self, A, B, C, D):
+    def intersect(self, A, B, C, D, dim):
         """ Return true if line segments AB and CD intersect """
-        return(self.ccw(A, C, D) != self.ccw(B, C, D) and
-               self.ccw(A, B, C) != self.ccw(A, B, D))
+        return np.any((self.ccw(A, C, D, dim) != self.ccw(B, C, D, dim)) &
+                      (self.ccw(A, B, C, dim) != self.ccw(A, B, D, dim)))
 
     def keep_points_inside(self, points, size):
         """ Keep only the points whose coordinates are inside the dimensions of
-        the image whose size is given """
-        new_points = np.empty((0, 2), dtype=np.int)
-        for i in range(points.shape[0]):
-            if points[i][0] >= 0 and points[i][0] < size[1] and \
-               points[i][1] >= 0 and points[i][1] < size[0]:
-                np.concatenate([new_points, np.array([points[i]])], axis=0)
-        return np.array(new_points)
+        the image of size 'size' """
+        mask = (points[:, 0] >= 0) & (points[:, 0] < size[1]) &\
+               (points[:, 1] >= 0) & (points[:, 1] < size[0])
+        return points[mask, :]
 
     def draw_lines(self, img):
         """ Draw up to 10 random lines and output the positions of the endpoints """
         num_lines = np.random.randint(1, 10)
-        segments = []
+        segments = np.empty((0, 4), dtype=np.int)
         points = np.empty((0, 2), dtype=np.int)
         for i in range(num_lines):
             x1 = np.random.randint(img.shape[1])
             y1 = np.random.randint(img.shape[0])
+            p1 = np.array([[x1, y1]])
             x2 = np.random.randint(img.shape[1])
             y2 = np.random.randint(img.shape[0])
+            p2 = np.array([[x2, y2]])
             # Check that there is no overlap
-            flag = False
-            for j in range(len(segments)):
-                if self.intersect((x1, y1), (x2, y2), segments[j][0], segments[j][1]):
-                    flag = True
-                    break
-            if flag:
+            if self.intersect(segments[:, 0:2], segments[:, 2:4], p1, p2, 2):
                 continue
-            segments.append(((x1, y1), (x2, y2)))
+            segments = np.concatenate([segments, np.array([[x1, y1, x2, y2]])], axis=0)
             col = self.get_random_color()
             cv.line(img, (x1, y1), (x2, y2), col, np.random.randint(1, 4))
             points = np.concatenate([points, np.array([[x1, y1], [x2, y2]])], axis=0)
@@ -130,7 +129,7 @@ class SyntheticDataset():
     def draw_multiple_polygons(self, img):
         """ Draw multiple polygons with a random number of corners (between 3 and 5)
         and return the corner points """
-        segments = []
+        segments = np.empty((0, 4), dtype=np.int)
         points = np.empty((0, 2), dtype=np.int)
         for i in range(30):
             num_corners = np.random.randint(3, 6)
@@ -145,25 +144,23 @@ class SyntheticDataset():
                            int(y + max(np.random.rand(), 0.5) * rad * math.sin(a))]
                           for a in angles]
             new_points = np.array(new_points)
-            new_segments = [((new_points[i][0], new_points[i][1]),
-                             (new_points[i+1][0], new_points[i+1][1]))
-                            for i in range(num_corners - 1)]
-            new_segments.append(((new_points[num_corners - 1][0],
-                                  new_points[num_corners - 1][1]),
-                                 (new_points[0][0], new_points[0][1])))
+            new_segments = np.zeros((1, 4, num_corners))
+            new_segments[:, 0, :] = [new_points[i][0] for i in range(num_corners)]
+            new_segments[:, 1, :] = [new_points[i][1] for i in range(num_corners)]
+            new_segments[:, 2, :] = [new_points[(i+1) % num_corners][0]
+                                     for i in range(num_corners)]
+            new_segments[:, 3, :] = [new_points[(i+1) % num_corners][1]
+                                     for i in range(num_corners)]
 
             # Check that the polygon will not overlap with pre-existing shapes
-            flag = False
-            for seg in new_segments:
-                for prev_seg in segments:
-                    if self.intersect(seg[0], seg[1], prev_seg[0], prev_seg[1]):
-                        flag = True
-                        break
-                if flag:
-                    break
-            if flag:  # there is an overlap
+            if self.intersect(segments[:, 0:2, None],
+                              segments[:, 2:4, None],
+                              new_segments[:, 0:2, :],
+                              new_segments[:, 2:4, :],
+                              3):
                 continue
-            segments = segments + new_segments
+            new_segments = np.reshape(np.swapaxes(new_segments, 0, 2), (-1, 4))
+            segments = np.concatenate([segments, new_segments], axis=0)
 
             # Color the polygon with a custom background
             corners = new_points.reshape((-1, 1, 2))
@@ -177,8 +174,8 @@ class SyntheticDataset():
 
     def draw_ellipses(self, img):
         """ Draw several ellipses """
-        centers = []
-        rads = []
+        centers = np.empty((0, 2), dtype=np.int)
+        rads = np.empty((0, 1), dtype=np.int)
         min_dim = min(img.shape[0], img.shape[1]) / 4
         for i in range(20):  # at most 20 ellipses (if no overlap)
             ax = int(max(np.random.rand() * min_dim, 15))  # semi axis of the ellipse
@@ -186,18 +183,14 @@ class SyntheticDataset():
             max_rad = max(ax, ay)
             x = np.random.randint(max_rad, img.shape[1] - max_rad)  # center
             y = np.random.randint(max_rad, img.shape[0] - max_rad)
+            new_center = np.array([[x, y]])
 
             # Check that the ellipsis will not overlap with pre-existing shapes
-            flag = False
-            for j in range(len(centers)):
-                if max_rad + rads[j] > math.sqrt((x - centers[j][0]) ** 2 +
-                                                 (y - centers[j][1]) ** 2):
-                    flag = True
-                    break
-            if flag:  # there is an overlap
+            diff = centers - new_center
+            if np.any(max_rad > (np.sqrt(np.sum(diff * diff, axis=1)) - rads)):
                 continue
-            centers.append((x, y))
-            rads.append(max_rad)
+            centers = np.concatenate([centers, new_center], axis=0)
+            rads = np.concatenate([rads, np.array([[max_rad]])], axis=0)
 
             col = self.get_random_color()
             angle = np.random.rand() * 90
@@ -233,11 +226,11 @@ class SyntheticDataset():
         cols = np.random.randint(3, 7)  # number of cols
         s = min((img.shape[1] - 1) // cols, (img.shape[0] - 1) // rows)  # size of a cell
         board = np.zeros((rows * s, cols * s), np.uint8)
-        points = np.zeros(((rows + 1) * (cols + 1), 2), np.int32)
-        for i in range(rows + 1):
-            for j in range(cols + 1):
-                points[i * (cols + 1) + j][0] = j * s
-                points[i * (cols + 1) + j][1] = i * s
+        x_coord = np.tile(range(cols + 1),
+                          rows + 1).reshape(((rows + 1) * (cols + 1), 1))
+        y_coord = np.repeat(range(rows + 1),
+                            cols + 1).reshape(((rows + 1) * (cols + 1), 1))
+        points = s * np.concatenate([x_coord, y_coord], axis=1)
 
         # Fill the rectangles
         for i in range(rows):
@@ -285,18 +278,20 @@ class SyntheticDataset():
                       int(img.shape[1] * (1 + np.random.rand())))
         board = np.zeros(board_size, np.uint8)
         col = np.random.randint(5, 13)  # number of cols
-        cols = board_size[1] * np.random.rand(col - 1)
-        cols = np.concatenate([cols, np.array([0, board_size[1] - 1])], axis=0)
+        cols = np.concatenate([board_size[1] * np.random.rand(col - 1),
+                               np.array([0, board_size[1] - 1])], axis=0)
         cols = np.unique(cols.astype(int))
         # Remove the indices that are too close
-        cols_list = [cols[i] for i in range(cols.shape[0] - 1)
-                     if abs(cols[i] - cols[i+1]) > 5]
-        cols_list.append(cols[-1])
-        cols = np.array(cols_list)
+        cols = cols[(np.concatenate([cols[1:],
+                                     np.array([board_size[1] + 10])],
+                                    axis=0) - cols) >= 10]
         col = cols.shape[0] - 1  # update the number of cols
-        points = [[0, c] for c in cols] + [[board_size[0] - 1, c] for c in cols]
-        points = np.array(points)
-        points[:, [0, 1]] = points[:, [1, 0]]  # x and y have been inverted
+        cols = np.reshape(cols, (col + 1, 1))
+        cols1 = np.concatenate([cols, np.zeros((col + 1, 1), np.int32)], axis=1)
+        cols2 = np.concatenate([cols,
+                                (board_size[0] - 1) * np.ones((col + 1, 1), np.int32)],
+                               axis=1)
+        points = np.concatenate([cols1, cols2], axis=0)
 
         # Fill the rectangles
         color = self.get_random_color()
@@ -310,13 +305,13 @@ class SyntheticDataset():
         # Warp the grid using an affine transformation
         # The parameters of the affine transformation are a bit constrained
         # to get transformations not too far-fetched
-        scale = 0.5 + np.random.rand() * 0.5
+        scale = 0.6 + np.random.rand() * 0.4
         angle = np.random.rand() * 2 * math.pi
-        affine_transform = [[scale * max(np.random.rand(), 0.6) * math.cos(angle),
+        affine_transform = [[scale * max(np.random.rand(), 0.7) * math.cos(angle),
                              scale * min(np.random.rand(), 0.4) * math.sin(angle),
                              board_size[0] / 3 + np.random.randint(-10, 10)],
                             [- scale * min(np.random.rand(), 0.4) * math.sin(angle),
-                             scale * max(np.random.rand(), 0.6) * math.cos(angle),
+                             scale * max(np.random.rand(), 0.7) * math.cos(angle),
                              board_size[1] / 3 + np.random.randint(-10, 10)]]
         affine_transform = np.array(affine_transform)
         trans = np.array([[1, 0, - board_size[0] / 2],
@@ -347,7 +342,7 @@ class SyntheticDataset():
         """ Draw a 2D projection of a cube and output the corners that are visible """
         # Generate a cube and apply to it an affine transformation
         # The order matters!
-        # Two adjacent vertices differs only from one bit (as in Gray codes)
+        # The indices of two adjacent vertices differ only of one bit (as in Gray codes)
         min_dim = min(img.shape[:2])
         lx = 30 + np.random.rand() * min_dim / 2  # dimensions of the cube
         ly = 30 + np.random.rand() * min_dim / 2
@@ -384,35 +379,14 @@ class SyntheticDataset():
                                                          np.dot(rotation_3,
                                                                 np.transpose(cube))))))
 
-        # Find one point which is not on the boundary of the convex hull
-        # (the hidden corner for example)
+        # The hidden corner is 0 by construction
+        # The front one is 7
         cube = cube[:, :2]  # project on the plane z=0
-        convex_hull = ConvexHull(cube)
-        boundary = np.sort(convex_hull.vertices)
-        bpoint = 0
-        for i in range(boundary.shape[0]):
-            if i != boundary[i]:  # i is not on the boundary
-                bpoint = i
-                break
         cube = cube.astype(int)
-        # Compute point in the foreground (opposite from bpoint)
-        fbitset = Bitset(bpoint, 3)
-        for i in [0, 1, 2]:
-            fbitset[i] = not fbitset[i]
-        fpoint = int(fbitset)
-        points = np.concatenate((cube[:bpoint, :], cube[(bpoint + 1):, :]), axis=0)
+        points = cube[1:, :]  # get rid of the hidden corner
 
         # Get the three visible faces
-        # faces contain the indices of the corners of the 3 faces starting from fpoint
-        faces = np.zeros((3, 4), np.uint8) + fpoint
-        for i in [0, 1, 2]:
-            current_bit = Bitset(fpoint, 3)
-            idx = 1
-            for j in [0, 1, 0]:
-                current_bit[(i + j) % 3] = not current_bit[(i + j) % 3]
-                faces[i][idx] = int(current_bit)
-                idx += 1
-        # print(faces)
+        faces = np.array([[7, 3, 1, 5], [7, 5, 4, 6], [7, 6, 2, 3]])
 
         # Fill the faces and draw the contours
         col_face = self.get_random_color()
