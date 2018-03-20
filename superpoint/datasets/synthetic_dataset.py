@@ -26,43 +26,29 @@ def add_salt_and_pepper(img):
     return np.empty((0, 2), dtype=np.int)
 
 
-def generate_background(size):
+def generate_background(size, nb_blobs):
     """ Generate a customized background image """
-    # img = np.zeros(size, dtype=np.uint8)
-    # nb_blobs = 30
-    # background_color = np.random.randint(256)
-    # img = img + background_color
-    # blobs = np.concatenate([np.random.randint(0, size[1], size=(nb_blobs, 1)),
-    #                         np.random.randint(0, size[0], size=(nb_blobs, 1))],
-    #                        axis=1)
-    # for i in range(nb_blobs):
-    #     col = get_random_color(background_color)
-    #     cv.circle(img, (blobs[i][0], blobs[i][1]),
-    #               np.random.randint(20), col, -1)
-    # kernel_size = np.random.randint(20, 100)
-    # img = cv.blur(img, (kernel_size, kernel_size))
     img = np.zeros(size, dtype=np.uint8)
     cv.randu(img, 0, 255)
     cv.threshold(img, np.random.randint(256), 255, cv.THRESH_BINARY, img)
-    cv.blur(img, (20, 20), img)
+    background_color = int(np.mean(img))
+    ulcorners = np.concatenate([np.random.randint(0, size[1], size=(nb_blobs, 1)),
+                                np.random.randint(0, size[0], size=(nb_blobs, 1))],
+                               axis=1)
+    lrcorners_x = np.minimum(ulcorners[:, 0] + np.random.randint(10, 40), size[1])
+    lrcorners_y = np.minimum(ulcorners[:, 1] + np.random.randint(10, 40), size[0])
+    lrcorners = np.concatenate([lrcorners_x[:, None], lrcorners_y[:, None]], axis=1)
+    for i in range(nb_blobs):
+        col = get_random_color(background_color)
+        cv.rectangle(img, (ulcorners[i, 0], ulcorners[i, 1]),
+                     (lrcorners[i, 0], lrcorners[i, 1]), col, -1)
+    kernel_size = np.random.randint(20, 50)
+    cv.blur(img, (kernel_size, kernel_size), img)
     return img
 
 
 def generate_custom_background(size, background_color):
     """ Generate a customized background to fill the shapes """
-    # img = np.zeros(size, dtype=np.uint8)
-    # nb_blobs = 1000
-    # col1 = get_random_color(background_color)
-    # img = img + col1
-    # blobs = np.concatenate([np.random.randint(0, size[1], size=(nb_blobs, 1)),
-    #                         np.random.randint(0, size[0], size=(nb_blobs, 1))],
-    #                        axis=1)
-    # for i in range(nb_blobs):
-    #     col = get_random_color(background_color)
-    #     cv.circle(img, (blobs[i][0], blobs[i][1]),
-    #               np.random.randint(5), col, -1)
-    # kernel_size = np.random.randint(10, 20)
-    # img = cv.blur(img, (kernel_size, kernel_size))
     img = np.zeros(size, dtype=np.uint8)
     cv.randu(img, 0, 255)
     cv.threshold(img, np.random.randint(256), 255, cv.THRESH_BINARY, img)
@@ -264,7 +250,7 @@ def draw_checkerboard(img):
     # Warp the grid using an affine transformation
     # The parameters of the affine transformation are a bit constrained
     # to get transformations not too far-fetched
-    scale = 0.5 + np.random.rand() * 1.5
+    scale = 1 + np.random.rand() * 1
     angle = np.random.rand() * 2 * math.pi
     affine_transform = [[scale * max(np.random.rand(), 0.6) * math.cos(angle),
                          scale * min(np.random.rand(), 0.4) * math.sin(angle),
@@ -288,6 +274,60 @@ def draw_checkerboard(img):
     mask = warped_board
     locs = np.where(mask != 0)
     img[locs[0], locs[1]] = mask[locs[0], locs[1]]
+
+    # Keep only the points inside the image
+    points = keep_points_inside(warped_points, img.shape[:2])
+    return points
+
+
+def draw_checkerboard2(img):
+    """ Draw a checkerboard and output the interest points """
+    background_color = int(np.mean(img))
+    # Create the grid
+    rows = np.random.randint(3, 7)  # number of rows
+    cols = np.random.randint(3, 7)  # number of cols
+    s = min((img.shape[1] - 1) // cols, (img.shape[0] - 1) // rows)  # size of a cell
+    x_coord = np.tile(range(cols + 1),
+                      rows + 1).reshape(((rows + 1) * (cols + 1), 1))
+    y_coord = np.repeat(range(rows + 1),
+                        cols + 1).reshape(((rows + 1) * (cols + 1), 1))
+    points = s * np.concatenate([x_coord, y_coord], axis=1)
+
+    # Warp the grid using an affine transformation
+    # The parameters of the affine transformation are a bit constrained
+    # to get transformations not too far-fetched
+    scale = 1 + np.random.rand() * 1
+    angle = np.random.rand() * 2 * math.pi
+    affine_transform = [[scale * max(np.random.rand(), 0.6) * math.cos(angle),
+                         scale * min(np.random.rand(), 0.4) * math.sin(angle),
+                         rows * s / 2 + np.random.randint(-30, 30)],
+                        [- scale * min(np.random.rand(), 0.4) * math.sin(angle),
+                         scale * max(np.random.rand(), 0.6) * math.cos(angle),
+                         cols * s / 2 + np.random.randint(-30, 30)]]
+    affine_transform = np.array(affine_transform)
+    points = np.transpose(np.concatenate((points,
+                                          np.ones(((rows + 1) * (cols + 1), 1))),
+                                         axis=1))
+    warped_points = np.transpose(np.dot(affine_transform, points))
+    warped_points = warped_points.astype(int)
+
+    # Fill the rectangles
+    for i in range(rows):
+        for j in range(cols):
+            col = get_random_color(background_color)
+            cv.fillConvexPoly(img, np.array([(warped_points[i * (cols + 1) + j, 0],
+                                              warped_points[i * (cols + 1) + j, 1]),
+                                             (warped_points[i * (cols + 1) + j + 1, 0],
+                                              warped_points[i * (cols + 1) + j + 1, 1]),
+                                             (warped_points[(i + 1)
+                                                            * (cols + 1) + j + 1, 0],
+                                              warped_points[(i + 1)
+                                                            * (cols + 1) + j + 1, 1]),
+                                             (warped_points[(i + 1)
+                                                            * (cols + 1) + j, 0],
+                                              warped_points[(i + 1)
+                                                            * (cols + 1) + j, 1])]),
+                              col)
 
     # Keep only the points inside the image
     points = keep_points_inside(warped_points, img.shape[:2])
@@ -329,7 +369,7 @@ def draw_stripes(img):
     # Warp the grid using an affine transformation
     # The parameters of the affine transformation are a bit constrained
     # to get transformations not too far-fetched
-    scale = 0.6 + np.random.rand() * 0.4
+    scale = 0.8 + np.random.rand() * 0.4
     angle = np.random.rand() * 2 * math.pi
     affine_transform = [[scale * max(np.random.rand(), 0.7) * math.cos(angle),
                          scale * min(np.random.rand(), 0.4) * math.sin(angle),
