@@ -42,7 +42,7 @@ def generate_background(size, nb_blobs):
         col = get_random_color(background_color)
         cv.rectangle(img, (ulcorners[i, 0], ulcorners[i, 1]),
                      (lrcorners[i, 0], lrcorners[i, 1]), col, -1)
-    kernel_size = np.random.randint(20, 50)
+    kernel_size = np.random.randint(30, 50)
     cv.blur(img, (kernel_size, kernel_size), img)
     return img
 
@@ -233,82 +233,54 @@ def draw_checkerboard(img):
     rows = np.random.randint(3, 7)  # number of rows
     cols = np.random.randint(3, 7)  # number of cols
     s = min((img.shape[1] - 1) // cols, (img.shape[0] - 1) // rows)  # size of a cell
-    board = np.zeros((rows * s, cols * s), np.uint8)
     x_coord = np.tile(range(cols + 1),
                       rows + 1).reshape(((rows + 1) * (cols + 1), 1))
     y_coord = np.repeat(range(rows + 1),
                         cols + 1).reshape(((rows + 1) * (cols + 1), 1))
     points = s * np.concatenate([x_coord, y_coord], axis=1)
 
-    # Fill the rectangles
-    for i in range(rows):
-        for j in range(cols):
-            col = get_random_color(background_color)
-            cv.rectangle(board, (j * s, i * s), ((j + 1) * s, (i + 1) * s), col, -1)
-    # cv.imshow("Checkerboard", board)
-
-    # Warp the grid using an affine transformation
-    # The parameters of the affine transformation are a bit constrained
+    # Warp the grid using an affine transformation and an homography
+    # The parameters of the transformations are constrained
     # to get transformations not too far-fetched
-    scale = 1 + np.random.rand() * 1
+    # Prepare the matrices
+    scale = 1.2 + np.random.rand()
     angle = np.random.rand() * 2 * math.pi
-    affine_transform = [[scale * max(np.random.rand(), 0.6) * math.cos(angle),
+    affine_transform = [[scale * max(np.random.rand(), 0.7) * math.cos(angle),
                          scale * min(np.random.rand(), 0.4) * math.sin(angle),
                          rows * s / 2 + np.random.randint(-30, 30)],
                         [- scale * min(np.random.rand(), 0.4) * math.sin(angle),
-                         scale * max(np.random.rand(), 0.6) * math.cos(angle),
+                         scale * max(np.random.rand(), 0.7) * math.cos(angle),
                          cols * s / 2 + np.random.randint(-30, 30)]]
     affine_transform = np.array(affine_transform)
-    warped_board = np.transpose(cv.warpAffine(board,
-                                              affine_transform,
-                                              img.shape[0:2]))
+    perspective_transform = np.array([[0.998 + 0.004 * np.random.rand(),
+                                       -0.002 + 0.004 * np.random.rand(),
+                                       -0.002 + 0.004 * np.random.rand()],
+                                      [-0.002 + 0.004 * np.random.rand(),
+                                       0.998 + 0.004 * np.random.rand(),
+                                       -0.002 + 0.004 * np.random.rand()],
+                                      [-0.002 + 0.004 * np.random.rand(),
+                                       -0.002 + 0.004 * np.random.rand(),
+                                       0.998 + 0.004 * np.random.rand()]])
+
+    # Apply the affine transformation
     points = np.transpose(np.concatenate((points,
                                           np.ones(((rows + 1) * (cols + 1), 1))),
                                          axis=1))
     warped_points = np.transpose(np.dot(affine_transform, points))
-    warped_points = warped_points.astype(int)
-    warped_points[:, [0, 1]] = warped_points[:, [1, 0]]  # x and y have been inverted
-    # cv.imshow("Warped checkerboard", warped_board)
 
-    # Add the warped checkerboard to img
-    mask = warped_board
-    locs = np.where(mask != 0)
-    img[locs[0], locs[1]] = mask[locs[0], locs[1]]
-
-    # Keep only the points inside the image
-    points = keep_points_inside(warped_points, img.shape[:2])
-    return points
-
-
-def draw_checkerboard2(img):
-    """ Draw a checkerboard and output the interest points """
-    background_color = int(np.mean(img))
-    # Create the grid
-    rows = np.random.randint(3, 7)  # number of rows
-    cols = np.random.randint(3, 7)  # number of cols
-    s = min((img.shape[1] - 1) // cols, (img.shape[0] - 1) // rows)  # size of a cell
-    x_coord = np.tile(range(cols + 1),
-                      rows + 1).reshape(((rows + 1) * (cols + 1), 1))
-    y_coord = np.repeat(range(rows + 1),
-                        cols + 1).reshape(((rows + 1) * (cols + 1), 1))
-    points = s * np.concatenate([x_coord, y_coord], axis=1)
-
-    # Warp the grid using an affine transformation
-    # The parameters of the affine transformation are a bit constrained
-    # to get transformations not too far-fetched
-    scale = 1 + np.random.rand() * 1
-    angle = np.random.rand() * 2 * math.pi
-    affine_transform = [[scale * max(np.random.rand(), 0.6) * math.cos(angle),
-                         scale * min(np.random.rand(), 0.4) * math.sin(angle),
-                         rows * s / 2 + np.random.randint(-30, 30)],
-                        [- scale * min(np.random.rand(), 0.4) * math.sin(angle),
-                         scale * max(np.random.rand(), 0.6) * math.cos(angle),
-                         cols * s / 2 + np.random.randint(-30, 30)]]
-    affine_transform = np.array(affine_transform)
-    points = np.transpose(np.concatenate((points,
-                                          np.ones(((rows + 1) * (cols + 1), 1))),
-                                         axis=1))
-    warped_points = np.transpose(np.dot(affine_transform, points))
+    # Apply the homography
+    warped_col0 = np.add(np.sum(np.multiply(warped_points,
+                                            perspective_transform[0, :2]), axis=1),
+                         perspective_transform[0, 2])
+    warped_col1 = np.add(np.sum(np.multiply(warped_points,
+                                            perspective_transform[1, :2]), axis=1),
+                         perspective_transform[1, 2])
+    warped_col2 = np.add(np.sum(np.multiply(warped_points,
+                                            perspective_transform[2, :2]), axis=1),
+                         perspective_transform[2, 2])
+    warped_col0 = np.divide(warped_col0, warped_col2)
+    warped_col1 = np.divide(warped_col1, warped_col2)
+    warped_points = np.concatenate([warped_col0[:, None], warped_col1[:, None]], axis=1)
     warped_points = warped_points.astype(int)
 
     # Fill the rectangles
@@ -329,6 +301,30 @@ def draw_checkerboard2(img):
                                                             * (cols + 1) + j, 1])]),
                               col)
 
+    # Draw lines on the boundaries of the board at random
+    nb_rows = np.random.randint(2, rows + 2)
+    nb_cols = np.random.randint(2, cols + 2)
+    for _ in range(nb_rows):
+        row_idx = np.random.randint(rows + 1)
+        col_idx1 = np.random.randint(cols + 1)
+        col_idx2 = np.random.randint(cols + 1)
+        col = get_random_color(background_color)
+        cv.line(img, (warped_points[row_idx * (cols + 1) + col_idx1, 0],
+                      warped_points[row_idx * (cols + 1) + col_idx1, 1]),
+                (warped_points[row_idx * (cols + 1) + col_idx2, 0],
+                 warped_points[row_idx * (cols + 1) + col_idx2, 1]),
+                col)
+    for _ in range(nb_cols):
+        col_idx = np.random.randint(cols + 1)
+        row_idx1 = np.random.randint(rows + 1)
+        row_idx2 = np.random.randint(rows + 1)
+        col = get_random_color(background_color)
+        cv.line(img, (warped_points[row_idx1 * (cols + 1) + col_idx, 0],
+                      warped_points[row_idx1 * (cols + 1) + col_idx, 1]),
+                (warped_points[row_idx2 * (cols + 1) + col_idx, 0],
+                 warped_points[row_idx2 * (cols + 1) + col_idx, 1]),
+                col)
+
     # Keep only the points inside the image
     points = keep_points_inside(warped_points, img.shape[:2])
     return points
@@ -340,7 +336,6 @@ def draw_stripes(img):
     # Create the grid
     board_size = (int(img.shape[0] * (1 + np.random.rand())),
                   int(img.shape[1] * (1 + np.random.rand())))
-    board = np.zeros(board_size, np.uint8)
     col = np.random.randint(5, 13)  # number of cols
     cols = np.concatenate([board_size[1] * np.random.rand(col - 1),
                            np.array([0, board_size[1] - 1])], axis=0)
@@ -357,19 +352,11 @@ def draw_stripes(img):
                            axis=1)
     points = np.concatenate([cols1, cols2], axis=0)
 
-    # Fill the rectangles
-    color = get_random_color(background_color)
-    for i in range(col):
-        color = (color + 128 + np.random.randint(-30, 30)) % 256
-        cv.rectangle(board, (points[i][0], points[i][1]),
-                     (points[i+col+2][0], points[i+col+2][1]),
-                     color, -1)
-    # cv.imshow("Stripes", board)
-
-    # Warp the grid using an affine transformation
-    # The parameters of the affine transformation are a bit constrained
+    # Warp the grid using an affine transformation and an homography
+    # The parameters of the transformations are constrained
     # to get transformations not too far-fetched
-    scale = 0.8 + np.random.rand() * 0.4
+    # Prepare the matrices
+    scale = 1 + np.random.rand() * 0.5
     angle = np.random.rand() * 2 * math.pi
     affine_transform = [[scale * max(np.random.rand(), 0.7) * math.cos(angle),
                          scale * min(np.random.rand(), 0.4) * math.sin(angle),
@@ -382,21 +369,72 @@ def draw_stripes(img):
                       [0, 1, - board_size[1] / 2],
                       [0, 0, 1]])
     affine_transform = np.dot(affine_transform, trans)
-    warped_board = np.transpose(cv.warpAffine(board,
-                                              affine_transform,
-                                              img.shape[0:2]))
+    perspective_transform = np.array([[0.998 + 0.004 * np.random.rand(),
+                                       -0.002 + 0.004 * np.random.rand(),
+                                       -0.002 + 0.004 * np.random.rand()],
+                                      [-0.002 + 0.004 * np.random.rand(),
+                                       0.998 + 0.004 * np.random.rand(),
+                                       -0.002 + 0.004 * np.random.rand()],
+                                      [-0.002 + 0.004 * np.random.rand(),
+                                       -0.002 + 0.004 * np.random.rand(),
+                                       0.998 + 0.004 * np.random.rand()]])
+
+    # Apply the affine transformation
     points = np.transpose(np.concatenate((points,
                                           np.ones((2 * (col + 1), 1))),
                                          axis=1))
     warped_points = np.transpose(np.dot(affine_transform, points))
-    warped_points = warped_points.astype(int)
-    warped_points[:, [0, 1]] = warped_points[:, [1, 0]]  # x and y have been inverted
-    # cv.imshow("Warped stripes", warped_board)
 
-    # Add the warped stripes to img
-    mask = warped_board
-    locs = np.where(mask != 0)
-    img[locs[0], locs[1]] = mask[locs[0], locs[1]]
+    # Apply the homography
+    warped_col0 = np.add(np.sum(np.multiply(warped_points,
+                                            perspective_transform[0, :2]), axis=1),
+                         perspective_transform[0, 2])
+    warped_col1 = np.add(np.sum(np.multiply(warped_points,
+                                            perspective_transform[1, :2]), axis=1),
+                         perspective_transform[1, 2])
+    warped_col2 = np.add(np.sum(np.multiply(warped_points,
+                                            perspective_transform[2, :2]), axis=1),
+                         perspective_transform[2, 2])
+    warped_col0 = np.divide(warped_col0, warped_col2)
+    warped_col1 = np.divide(warped_col1, warped_col2)
+    warped_points = np.concatenate([warped_col0[:, None], warped_col1[:, None]], axis=1)
+    warped_points = warped_points.astype(int)
+
+    # Fill the rectangles
+    color = get_random_color(background_color)
+    for i in range(col):
+        color = (color + 128 + np.random.randint(-30, 30)) % 256
+        cv.fillConvexPoly(img, np.array([(warped_points[i, 0],
+                                          warped_points[i, 1]),
+                                         (warped_points[i+1, 0],
+                                          warped_points[i+1, 1]),
+                                         (warped_points[i+col+2, 0],
+                                          warped_points[i+col+2, 1]),
+                                         (warped_points[i+col+1, 0],
+                                          warped_points[i+col+1, 1])]),
+                          color)
+
+    # Draw lines on the boundaries of the stripes at random
+    nb_rows = np.random.randint(2, 5)
+    nb_cols = np.random.randint(2, col + 2)
+    for _ in range(nb_rows):
+        row_idx = np.random.choice([0, col + 1])
+        col_idx1 = np.random.randint(col + 1)
+        col_idx2 = np.random.randint(col + 1)
+        color = get_random_color(background_color)
+        cv.line(img, (warped_points[row_idx + col_idx1, 0],
+                      warped_points[row_idx + col_idx1, 1]),
+                (warped_points[row_idx + col_idx2, 0],
+                 warped_points[row_idx + col_idx2, 1]),
+                color)
+    for _ in range(nb_cols):
+        col_idx = np.random.randint(col + 1)
+        color = get_random_color(background_color)
+        cv.line(img, (warped_points[col_idx, 0],
+                      warped_points[col_idx, 1]),
+                (warped_points[col_idx + col + 1, 0],
+                 warped_points[col_idx + col + 1, 1]),
+                color)
 
     # Keep only the points inside the image
     points = keep_points_inside(warped_points, img.shape[:2])
