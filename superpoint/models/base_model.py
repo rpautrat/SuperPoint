@@ -1,7 +1,9 @@
 from abc import ABCMeta, abstractmethod
 import tensorflow as tf
+from tensorflow.python.client import timeline
 import numpy as np
 from tqdm import tqdm
+import os.path as osp
 import itertools
 
 
@@ -120,12 +122,13 @@ class BaseModel(metaclass=ABCMeta):
     def _gpu_tower(self, data, mode):
         # Split the batch between the GPUs (data parallelism)
         with tf.device('/cpu:0'):
-            batch_size = self.config['batch_size'] if (mode == Mode.TRAIN) \
-                    else self.config['eval_batch_size']
-            shards = {d: tf.unstack(v, num=batch_size*self.n_gpus, axis=0)
-                      for d, v in data.items()}
-            shards = [{d: tf.stack(v[i::self.n_gpus]) for d, v in shards.items()}
-                      for i in range(self.n_gpus)]
+            with tf.name_scope('{}_data_sharding'.format(mode)):
+                batch_size = self.config['batch_size'] if (mode == Mode.TRAIN) \
+                        else self.config['eval_batch_size']
+                shards = {d: tf.unstack(v, num=batch_size*self.n_gpus, axis=0)
+                          for d, v in data.items()}
+                shards = [{d: tf.stack(v[i::self.n_gpus]) for d, v in shards.items()}
+                          for i in range(self.n_gpus)]
 
         # Create towers, i.e. copies of the model for each GPU,
         # with their own loss and gradients.
@@ -137,7 +140,7 @@ class BaseModel(metaclass=ABCMeta):
             worker = '/gpu:{}'.format(i)
             device_setter = tf.train.replica_device_setter(
                     worker_device=worker, ps_device='/cpu:0', ps_tasks=1)
-            with tf.name_scope('{}_{}'.format(mode, i)) as scope:
+            with tf.name_scope('{}_tower{}'.format(mode, i)) as scope:
                 with tf.device(device_setter):
                     net_outputs = self._model(shards[i], mode, **self.config)
                     if mode == Mode.TRAIN:
@@ -265,16 +268,22 @@ class BaseModel(metaclass=ABCMeta):
             self.saver = tf.train.Saver(save_relative_paths=True)
         self.graph.finalize()
 
-    def train(self, iterations, validation_interval=100, output_dir=None):
+    def train(self, iterations, validation_interval=100, output_dir=None, profile=False):
         assert 'training' in self.datasets, 'Training dataset is required.'
         if output_dir is not None:
             train_writer = tf.summary.FileWriter(output_dir)
+        if profile:
+            options = tf.RunOptions(trace_level=tf.RunOptions.FULL_TRACE)
+            run_metadata = tf.RunMetadata()
+        else:
+            options, run_metadata = None, None
 
         tf.logging.info('Start training')
         for i in range(iterations):
             loss, summaries, _ = self.sess.run(
                     [self.loss, self.summaries, self.trainer],
-                    feed_dict={self.handle: self.dataset_handles['training']})
+                    feed_dict={self.handle: self.dataset_handles['training']},
+                    options=options, run_metadata=run_metadata)
 
             if 'validation' in self.datasets and i % validation_interval == 0:
                 metrics = self.evaluate('validation', mute=True)
@@ -288,6 +297,13 @@ class BaseModel(metaclass=ABCMeta):
                         tf.Summary.Value(tag=m, simple_value=v)
                         for m, v in metrics.items()])
                     train_writer.add_summary(metrics_summaries, i)
+
+                    if profile and i != 0:
+                        fetched_timeline = timeline.Timeline(run_metadata.step_stats)
+                        chrome_trace = fetched_timeline.generate_chrome_trace_format()
+                        with open(osp.join(output_dir,
+                                           'profile_{}.json'.format(i)), 'w') as f:
+                            f.write(chrome_trace)
         tf.logging.info('Training finished')
 
     def predict(self, data, keys='pred', batch=False):
