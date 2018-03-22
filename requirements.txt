@@ -1,4 +1,4 @@
-tensorflow-gpu==1.4
+tensorflow-gpu==1.6
 numpy
 scipy
 opencv-python

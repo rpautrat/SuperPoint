@@ -52,7 +52,7 @@ def detector_head(inputs, **config):
         x = vgg_block(inputs, 256, 3, 'conv1', **params_conv)
         x = vgg_block(inputs, 1+pow(config['grid_size'], 2), 1, 'conv2', **params_conv)
 
-        prob = tf.nn.softmax(x, dim=cindex)
+        prob = tf.nn.softmax(x, axis=cindex)
         # Strip the extra “no interest point” dustbin
         prob = prob[:, :-1, :, :] if cfirst else prob[:, :, :, :-1]
         prob = tf.depth_to_space(
@@ -60,8 +60,8 @@ def detector_head(inputs, **config):
         prob = tf.squeeze(prob, axis=cindex)
 
         # Filter maximum per block
-        pred = tf.equal(x, tf.reduce_max(x, axis=cindex, keep_dims=True))
-        pred = tf.cast(pred, tf.float32)  # as of 1.4: GPU strided_slice only for float32
+        pred = tf.equal(x, tf.reduce_max(x, axis=cindex, keepdims=True))
+        pred = tf.cast(pred, tf.float32)  # r1.6: GPU `depth_to_space` only for float32
         pred = pred[:, :-1, :, :] if cfirst else pred[:, :, :, :-1]
         pred = tf.depth_to_space(
                 pred, config['grid_size'], data_format='NCHW' if cfirst else 'NHWC')

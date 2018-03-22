@@ -11,17 +11,9 @@ from superpoint.models import get_model
 from superpoint.utils.stdout_capturing import capture_outputs
 from superpoint.settings import EXPER_PATH
 
-os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'  # Bugfix for TF 1.4
-import tensorflow as tf  # noqa: E402
-
-
-# Dirty fix until update to 1.6
-if tf.__version__ == '1.4.0':
-    tf.logging._logger.removeHandler(tf.logging._handler)
-
 logging.basicConfig(format='[%(asctime)s %(levelname)s] %(message)s',
-                    datefmt='%m/%d/%Y %H:%M:%S',
-                    level=logging.INFO)
+                    datefmt='%m/%d/%Y %H:%M:%S', level=logging.INFO)
+import tensorflow as tf  # noqa: E402
 
 
 def train(config, n_iter, output_dir, checkpoint_name='model.ckpt'):
