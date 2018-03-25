@@ -21,6 +21,22 @@ def get_random_color(background_color):
     return color
 
 
+def get_different_color(previous_colors, min_dist=50, max_count=20):
+    """ Output a color that contrasts with the previous colors
+    Parameters:
+      previous_colors: np.array of the previous colors
+      min_dist: the difference between the new color and
+                the previous colors must be at least min_dist
+      max_count: maximal number of iterations
+    """
+    color = random_state.randint(256)
+    count = 0
+    while np.any(np.abs(previous_colors - color) < min_dist) and count < max_count:
+        count += 1
+        color = random_state.randint(256)
+    return color
+
+
 def add_salt_and_pepper(img):
     """ Add salt and pepper noise to an image """
     noise = np.zeros((img.shape[0], img.shape[1]), dtype=np.uint8)
@@ -173,6 +189,17 @@ def draw_polygon(img, max_sides=6):
     return points
 
 
+def overlap(center, rad, centers, rads):
+    """ Check that the circle with (center, rad)
+    doesn't overlap with the other circles """
+    flag = False
+    for i in range(len(rads)):
+        if np.linalg.norm(center - centers[i]) + min(rad, rads[i]) < max(rad, rads[i]):
+            flag = True
+            break
+    return flag
+
+
 def draw_multiple_polygons(img, max_sides=6, nb_polygons=30):
     """ Draw multiple polygons with a random number of corners
     and return the corner points
@@ -181,6 +208,8 @@ def draw_multiple_polygons(img, max_sides=6, nb_polygons=30):
       nb_polygons: maximal number of polygons
     """
     segments = np.empty((0, 4), dtype=np.int)
+    centers = []
+    rads = []
     points = np.empty((0, 2), dtype=np.int)
     background_color = int(np.mean(img))
     for i in range(nb_polygons):
@@ -210,8 +239,10 @@ def draw_multiple_polygons(img, max_sides=6, nb_polygons=30):
                      segments[:, 2:4, None],
                      new_segments[:, 0:2, :],
                      new_segments[:, 2:4, :],
-                     3):
+                     3) or overlap(np.array([x, y]), rad, centers, rads):
             continue
+        centers.append(np.array([x, y]))
+        rads.append(rad)
         new_segments = np.reshape(np.swapaxes(new_segments, 0, 2), (-1, 4))
         segments = np.concatenate([segments, new_segments], axis=0)
 
@@ -310,7 +341,8 @@ def draw_checkerboard(img, max_rows=7, max_cols=7, transform_params=(0.05, 0.15)
     alpha_affine = np.max(img.shape) * (transform_params[0]
                                         + random_state.rand() * transform_params[1])
     center_square = np.float32(img.shape) // 2
-    square_size = min(img.shape) // 3
+    min_dim = min(img.shape)
+    square_size = min_dim // 3
     pts1 = np.float32([center_square + square_size,
                        [center_square[0]+square_size, center_square[1]-square_size],
                        center_square - square_size,
@@ -346,9 +378,21 @@ def draw_checkerboard(img, max_rows=7, max_cols=7, transform_params=(0.05, 0.15)
     warped_points = warped_points.astype(int)
 
     # Fill the rectangles
+    colors = np.zeros((rows * cols,), np.int32)
     for i in range(rows):
         for j in range(cols):
-            col = get_random_color(background_color)
+            # Get a color that contrast with the neighboring cells
+            if i == 0 and j == 0:
+                col = get_random_color(background_color)
+            else:
+                neighboring_colors = []
+                if i != 0:
+                    neighboring_colors.append(colors[(i-1) * cols + j])
+                if j != 0:
+                    neighboring_colors.append(colors[i * cols + j - 1])
+                col = get_different_color(np.array(neighboring_colors))
+            colors[i * cols + j] = col
+            # Fill the cell
             cv.fillConvexPoly(img, np.array([(warped_points[i * (cols + 1) + j, 0],
                                               warped_points[i * (cols + 1) + j, 1]),
                                              (warped_points[i * (cols + 1) + j + 1, 0],
@@ -366,6 +410,7 @@ def draw_checkerboard(img, max_rows=7, max_cols=7, transform_params=(0.05, 0.15)
     # Draw lines on the boundaries of the board at random
     nb_rows = random_state.randint(2, rows + 2)
     nb_cols = random_state.randint(2, cols + 2)
+    thickness = random_state.randint(min_dim * 0.01, min_dim * 0.015)
     for _ in range(nb_rows):
         row_idx = random_state.randint(rows + 1)
         col_idx1 = random_state.randint(cols + 1)
@@ -375,7 +420,7 @@ def draw_checkerboard(img, max_rows=7, max_cols=7, transform_params=(0.05, 0.15)
                       warped_points[row_idx * (cols + 1) + col_idx1, 1]),
                 (warped_points[row_idx * (cols + 1) + col_idx2, 0],
                  warped_points[row_idx * (cols + 1) + col_idx2, 1]),
-                col)
+                col, thickness)
     for _ in range(nb_cols):
         col_idx = random_state.randint(cols + 1)
         row_idx1 = random_state.randint(rows + 1)
@@ -385,7 +430,7 @@ def draw_checkerboard(img, max_rows=7, max_cols=7, transform_params=(0.05, 0.15)
                       warped_points[row_idx1 * (cols + 1) + col_idx, 1]),
                 (warped_points[row_idx2 * (cols + 1) + col_idx, 0],
                  warped_points[row_idx2 * (cols + 1) + col_idx, 1]),
-                col)
+                col, thickness)
 
     # Keep only the points inside the image
     points = keep_points_inside(warped_points, img.shape[:2])
@@ -411,7 +456,8 @@ def draw_stripes(img, max_nb_cols=13, min_width_ratio=0.04,
                            np.array([0, board_size[1] - 1])], axis=0)
     cols = np.unique(cols.astype(int))
     # Remove the indices that are too close
-    min_width = min(img.shape) * min_width_ratio
+    min_dim = min(img.shape)
+    min_width = min_dim * min_width_ratio
     cols = cols[(np.concatenate([cols[1:],
                                  np.array([board_size[1] + min_width])],
                                 axis=0) - cols) >= min_width]
@@ -482,6 +528,7 @@ def draw_stripes(img, max_nb_cols=13, min_width_ratio=0.04,
     # Draw lines on the boundaries of the stripes at random
     nb_rows = random_state.randint(2, 5)
     nb_cols = random_state.randint(2, col + 2)
+    thickness = random_state.randint(min_dim * 0.01, min_dim * 0.015)
     for _ in range(nb_rows):
         row_idx = random_state.choice([0, col + 1])
         col_idx1 = random_state.randint(col + 1)
@@ -491,7 +538,7 @@ def draw_stripes(img, max_nb_cols=13, min_width_ratio=0.04,
                       warped_points[row_idx + col_idx1, 1]),
                 (warped_points[row_idx + col_idx2, 0],
                  warped_points[row_idx + col_idx2, 1]),
-                color)
+                color, thickness)
     for _ in range(nb_cols):
         col_idx = random_state.randint(col + 1)
         color = get_random_color(background_color)
@@ -499,7 +546,7 @@ def draw_stripes(img, max_nb_cols=13, min_width_ratio=0.04,
                       warped_points[col_idx, 1]),
                 (warped_points[col_idx + col + 1, 0],
                  warped_points[col_idx + col + 1, 1]),
-                color)
+                color, thickness)
 
     # Keep only the points inside the image
     points = keep_points_inside(warped_points, img.shape[:2])
