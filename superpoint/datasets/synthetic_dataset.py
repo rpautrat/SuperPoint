@@ -160,7 +160,6 @@ def draw_lines(img, nb_lines=10):
         thickness = random_state.randint(min_dim * 0.01, min_dim * 0.02)
         cv.line(img, (x1, y1), (x2, y2), col, thickness)
         points = np.concatenate([points, np.array([[x1, y1], [x2, y2]])], axis=0)
-    final_blur(img)
     return points
 
 
@@ -185,7 +184,6 @@ def draw_polygon(img, max_sides=6):
     corners = points.reshape((-1, 1, 2))
     col = get_random_color(int(np.mean(img)))
     cv.fillPoly(img, [corners], col)
-    final_blur(img)
     return points
 
 
@@ -254,7 +252,6 @@ def draw_multiple_polygons(img, max_sides=6, nb_polygons=30):
         locs = np.where(mask != 0)
         img[locs[0], locs[1]] = custom_background[locs[0], locs[1]]
         points = np.concatenate([points, new_points], axis=0)
-    final_blur(img)
     return points
 
 
@@ -285,7 +282,6 @@ def draw_ellipses(img, nb_ellipses=20):
         col = get_random_color(background_color)
         angle = random_state.rand() * 90
         cv.ellipse(img, (x, y), (ax, ay), angle, 0, 360, col, -1)
-    final_blur(img)
     return np.empty((0, 2), dtype=np.int)
 
 
@@ -314,7 +310,6 @@ def draw_star(img, nb_branches=6):
         cv.line(img, (points[0][0], points[0][1]),
                 (points[i][0], points[i][1]),
                 col, thickness)
-    final_blur(img)
     return points
 
 
@@ -434,7 +429,6 @@ def draw_checkerboard(img, max_rows=7, max_cols=7, transform_params=(0.05, 0.15)
 
     # Keep only the points inside the image
     points = keep_points_inside(warped_points, img.shape[:2])
-    final_blur(img)
     return points
 
 
@@ -550,7 +544,6 @@ def draw_stripes(img, max_nb_cols=13, min_width_ratio=0.04,
 
     # Keep only the points inside the image
     points = keep_points_inside(warped_points, img.shape[:2])
-    final_blur(img)
     return points
 
 
@@ -638,7 +631,6 @@ def draw_cube(img, min_size_ratio=0.2, min_angle_rot=math.pi / 10,
 
     # Keep only the points inside the image
     points = keep_points_inside(points, img.shape[:2])
-    final_blur(img)
     return points
 
 
