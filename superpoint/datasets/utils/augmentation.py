@@ -1,0 +1,269 @@
+import cv2 as cv
+import numpy as np
+import math
+from scipy.ndimage.filters import gaussian_filter
+
+""" Data augmentation of 2D images """
+
+
+def additive_gaussian_noise(img, keypoints, random_state=None, std=(5, 95)):
+    """ Add gaussian noise to the current image pixel-wise
+    Parameters:
+      std: the standard deviation of the filter will be between std[0] and std[0]+std[1]
+    """
+    if random_state is None:
+        random_state = np.random.RandomState(None)
+    sigma = std[0] + random_state.rand() * std[1]
+    gaussian_noise = random_state.randn(img.shape[0], img.shape[1]) * sigma
+    noisy_img = img + gaussian_noise
+    noisy_img = np.clip(noisy_img, 0, 255).astype(np.uint8)
+    return (noisy_img, keypoints)
+
+
+def additive_speckle_noise(img, keypoints, intensity=5):
+    """ Add salt and pepper noise to an image
+    Parameters:
+      intensity: the higher, the more speckles there will be
+    """
+    noise = np.zeros(img.shape, dtype=np.uint8)
+    cv.randu(noise, 0, 255)
+    black = noise < intensity
+    white = noise > 256 - intensity
+    noisy_img = img.copy()
+    noisy_img[white > 0] = 255
+    noisy_img[black > 0] = 0
+    return (noisy_img, keypoints)
+
+
+def change_brightness(img, keypoints, random_state=None, max_change=50):
+    """ Change the brightness of img
+    Parameters:
+      max_change: max amount of brightness added/subtracted to the image
+    """
+    if random_state is None:
+        random_state = np.random.RandomState(None)
+    brightness = random_state.randint(-max_change, max_change)
+    new_img = img.astype(np.int16) + brightness
+    return (np.clip(new_img, 0, 255), keypoints)
+
+
+def change_contrast(img, keypoints, random_state=None, max_change=0.5):
+    """ Change the contrast of img
+    Parameters:
+      max_change: the change in contrast will be between 1-max_change and 1+max_change
+    """
+    if random_state is None:
+        random_state = np.random.RandomState(None)
+    contrast = 1 + max_change * random_state.rand()
+    new_img = img.astype(float) * contrast
+    new_img = np.clip(new_img, 0, 255)
+    return (new_img.astype(np.uint8), keypoints)
+
+
+def resize_after_crop(orig_img, cropped_img, keypoints, random_state=None):
+    """ Crop cropped_img so that it has the same ratio as orig_img
+    and resize it to orig_img.shape """
+    shape = orig_img.shape
+    ratio = shape[0] / shape[1]  # we want to keep the same ratio
+    if (cropped_img.shape[1] * ratio) > cropped_img.shape[0]:  # columns too long
+        col_length = int(cropped_img.shape[0] / ratio)
+        min_col = cropped_img.shape[1] // 2 - col_length // 2
+        max_col = min_col + col_length
+        resized_img = cropped_img[:, min_col:(max_col+1)]
+        mask = (keypoints[:, 0] >= min_col) & (keypoints[:, 0] <= max_col)
+        new_keypoints = keypoints[mask, :].astype(float)
+        new_keypoints[:, 0] -= min_col
+        ratio_x = shape[1] / col_length
+        ratio_y = shape[0] / cropped_img.shape[0]
+    else:  # rows too long
+        row_length = int(cropped_img.shape[1] * ratio)
+        min_row = cropped_img.shape[0] // 2 - row_length // 2
+        max_row = min_row + row_length
+        resized_img = cropped_img[min_row:(max_row+1), :]
+        mask = (keypoints[:, 1] >= min_row) & (keypoints[:, 1] <= max_row)
+        new_keypoints = keypoints[mask, :].astype(float)
+        new_keypoints[:, 1] -= min_row
+        ratio_x = shape[1] / cropped_img.shape[1]
+        ratio_y = shape[0] / row_length
+
+    # Resize the keypoints
+    new_keypoints[:, 0] *= ratio_x
+    new_keypoints[:, 1] *= ratio_y
+    return (cv.resize(resized_img, (shape[1], shape[0])), new_keypoints)
+
+
+def crop_after_transform(orig_img, warped_img, transform, keypoints, random_state=None):
+    """ Crop img after transform has been applied """
+    shape = warped_img.shape
+    # Compute the new location of the corners
+    corners = np.array([[0, 0, 1],
+                        [0, shape[0] - 1, 1],
+                        [shape[1] - 1, 0, 1],
+                        [shape[1] - 1, shape[0] - 1, 1]])
+    corners = np.transpose(corners)
+    corners = np.dot(transform, corners)
+    corners = np.transpose(corners)
+    if corners.shape[1] == 3:  # transform is an homography
+        corners = corners[:, :2] / corners[:, 2].reshape((4, 1))
+
+    # Crop and resize img
+    min_row = max([0, corners[0, 1], corners[2, 1]])
+    max_row = min([shape[0], corners[1, 1] + 1, corners[3, 1] + 1])
+    min_col = max([0, corners[0, 0], corners[1, 0]])
+    max_col = min([shape[1], corners[2, 0] + 1, corners[3, 0] + 1])
+    if max_row < min_row + 50 or max_col < min_col + 50:  # retry if too small
+        if transform.shape[0] == 2:  # affine transform
+            return affine_transform(orig_img, random_state)
+        else:  # homography
+            return perspective_transform(orig_img, random_state)
+    cropped_img = warped_img[int(min_row):int(max_row), int(min_col):int(max_col)]
+
+    # Crop the keypoints
+    mask = (keypoints[:, 0] >= min_col) & (keypoints[:, 0] < max_col) &\
+           (keypoints[:, 1] >= min_row) & (keypoints[:, 1] < max_row)
+    keypoints = keypoints[mask, :]
+    keypoints[:, 0] -= min_col
+    keypoints[:, 1] -= min_row
+    return resize_after_crop(orig_img, cropped_img, keypoints, random_state)
+
+
+def affine_transform(img, keypoints, random_state=None, affine_params=(0.05, 0.15)):
+    """ Apply an affine transformation to the image
+    Parameters:
+      affine_params: parameters to modify the affine transformation
+    """
+    if random_state is None:
+        random_state = np.random.RandomState(None)
+
+    shape = img.shape
+    alpha_affine = np.max(shape) * (affine_params[0] +
+                                    random_state.rand() * affine_params[1])
+    center_square = np.float32(shape) // 2
+    square_size = min(shape) // 3
+    pts1 = np.float32([center_square + square_size,
+                       [center_square[0]+square_size, center_square[1]-square_size],
+                       center_square - square_size])
+    pts2 = pts1 + random_state.uniform(-alpha_affine,
+                                       alpha_affine,
+                                       size=pts1.shape).astype(np.float32)
+    M = cv.getAffineTransform(pts1, pts2)
+
+    # Warp the image and keypoints
+    warped_img = cv.warpAffine(img, M, shape[::-1])
+    new_keypoints = np.transpose(np.concatenate([keypoints,
+                                                 np.ones((keypoints.shape[0], 1))],
+                                                axis=1))
+    new_keypoints = np.transpose(np.dot(M, new_keypoints))
+
+    return crop_after_transform(img, warped_img, M, new_keypoints, random_state)
+
+
+def perspective_transform(img, keypoints, random_state=None, param=0.002):
+    """ Apply a perspective transformation to the image
+    Parameters:
+      param: parameter controlling the intensity of the perspective transform
+    """
+    if random_state is None:
+        random_state = np.random.RandomState(None)
+
+    perspective_transform = np.array([[1 - param + 2 * param * random_state.rand(),
+                                       -param + 2 * param * random_state.rand(),
+                                       -param + 2 * param * random_state.rand()],
+                                      [-param + 2 * param * random_state.rand(),
+                                       1 - param + 2 * param * random_state.rand(),
+                                       -param + 2 * param * random_state.rand()],
+                                      [-param + 2 * param * random_state.rand(),
+                                       -param + 2 * param * random_state.rand(),
+                                       1 - param + 2 * param * random_state.rand()]])
+
+    # Warp the image and the keypoints
+    warped_img = cv.warpPerspective(img, perspective_transform, img.shape[::-1])
+    warped_col0 = np.add(np.sum(np.multiply(keypoints,
+                                            perspective_transform[0, :2]), axis=1),
+                         perspective_transform[0, 2])
+    warped_col1 = np.add(np.sum(np.multiply(keypoints,
+                                            perspective_transform[1, :2]), axis=1),
+                         perspective_transform[1, 2])
+    warped_col2 = np.add(np.sum(np.multiply(keypoints,
+                                            perspective_transform[2, :2]), axis=1),
+                         perspective_transform[2, 2])
+    warped_col0 = np.divide(warped_col0, warped_col2)
+    warped_col1 = np.divide(warped_col1, warped_col2)
+    new_keypoints = np.concatenate([warped_col0[:, None], warped_col1[:, None]], axis=1)
+    return crop_after_transform(img, warped_img,
+                                perspective_transform, new_keypoints, random_state)
+
+
+def elastic_transform(img, keypoints, random_state=None,
+                      sigma_params=(0.05, 0.05), alpha_params=(1, 5), padding=10):
+    """ Apply an elastic distortion to the image
+    Parameters:
+      sigma_params: sigma can vary between max(img.shape) * sigma_params[0] and
+                    max(img.shape) * (sigma_params[0] + sigma_params[1])
+      alpha_params: alpha can vary between max(img.shape) * alpha_params[0] and
+                    max(img.shape) * (alpha_params[0] + alpha_params[1])
+      padding: padding that will be removed when cropping (remove strange artefacts)
+    """
+    if random_state is None:
+        random_state = np.random.RandomState(None)
+    shape = img.shape
+    sigma = np.max(shape) * (sigma_params[0] + sigma_params[1] * random_state.rand())
+    alpha = np.max(shape) * (alpha_params[0] + alpha_params[1] * random_state.rand())
+
+    # Create the grid
+    x, y = np.meshgrid(np.arange(shape[1]), np.arange(shape[0]))
+    dx = gaussian_filter((random_state.rand(*shape) * 2 - 1), sigma) * alpha
+    dy = gaussian_filter((random_state.rand(*shape) * 2 - 1), sigma) * alpha
+
+    # Apply the distortion
+    distorted_img = cv.remap(img, np.float32(x + dx), np.float32(y + dy),
+                             interpolation=cv.INTER_LINEAR)
+    inverse_map_x = np.float32(x - dx)
+    inverse_map_y = np.float32(y - dy)
+    keypoints_x = inverse_map_x[keypoints[:, 1], keypoints[:, 0]]
+    keypoints_y = inverse_map_y[keypoints[:, 1], keypoints[:, 0]]
+    new_keypoints = np.concatenate([keypoints_x[:, None], keypoints_y[:, None]], axis=1)
+
+    # Crop and resize
+    min_row = int(math.ceil(np.max(dy))) + padding
+    max_row = int(math.floor(np.min(dy))) + shape[0] - padding
+    min_col = int(math.ceil(np.max(dx))) + padding
+    max_col = int(math.floor(np.min(dx))) + shape[1] - padding
+    distorted_img = distorted_img[min_row:max_row, min_col:max_col]
+    mask = (new_keypoints[:, 0] >= min_col) & (new_keypoints[:, 0] < max_col) &\
+           (new_keypoints[:, 1] >= min_row) & (new_keypoints[:, 1] < max_row)
+    new_keypoints = new_keypoints[mask, :]
+    new_keypoints[:, 0] -= min_col
+    new_keypoints[:, 1] -= min_row
+    return resize_after_crop(img, distorted_img, new_keypoints, random_state)
+
+
+def random_crop(img, keypoints, random_state=None, min_crop_ratio=0.5):
+    """ Crop a part of the image and resize to the original size
+    Parameters:
+      min_crop_ratio: the cropped image will have
+                      at least a size min_crop_ratio * img.shape
+    """
+    if random_state is None:
+        random_state = np.random.RandomState(None)
+
+    shape = img.shape
+    ratio = shape[0] / shape[1]
+    new_col_length = random_state.randint(min_crop_ratio * shape[1], shape[1])
+    new_row_length = int(ratio * new_col_length)
+    start_col = random_state.randint(shape[1] - new_col_length)
+    start_row = random_state.randint(shape[0] - new_row_length)
+    cropped_img = img[start_row:(start_row+new_row_length),
+                      start_col:(start_col+new_col_length)]
+    mask = (keypoints[:, 0] >= start_col) &\
+           (keypoints[:, 0] < start_col+new_col_length) &\
+           (keypoints[:, 1] >= start_row) &\
+           (keypoints[:, 1] < start_row+new_row_length)
+    new_keypoints = keypoints[mask, :].astype(float)
+
+    # Resize the keypoints and the image
+    ratio_x = shape[1] / new_col_length
+    ratio_y = shape[0] / new_row_length
+    new_keypoints[:, 0] = (new_keypoints[:, 0] - start_col) * ratio_x
+    new_keypoints[:, 1] = (new_keypoints[:, 1] - start_row) * ratio_y
+    return (cv.resize(cropped_img, (shape[1], shape[0])), new_keypoints)
