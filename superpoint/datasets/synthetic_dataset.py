@@ -198,7 +198,7 @@ def overlap(center, rad, centers, rads):
     return flag
 
 
-def draw_multiple_polygons(img, max_sides=6, nb_polygons=30):
+def draw_multiple_polygons(img, max_sides=6, nb_polygons=30, **extra):
     """ Draw multiple polygons with a random number of corners
     and return the corner points
     Parameters:
@@ -247,7 +247,8 @@ def draw_multiple_polygons(img, max_sides=6, nb_polygons=30):
         # Color the polygon with a custom background
         corners = new_points.reshape((-1, 1, 2))
         mask = np.zeros(img.shape, np.uint8)
-        custom_background = generate_custom_background(img.shape, background_color)
+        custom_background = generate_custom_background(img.shape, background_color,
+                                                       **extra)
         cv.fillPoly(mask, [corners], 255)
         locs = np.where(mask != 0)
         img[locs[0], locs[1]] = custom_background[locs[0], locs[1]]
@@ -619,7 +620,7 @@ def draw_cube(img, min_size_ratio=0.2, min_angle_rot=math.pi / 10,
     for i in [0, 1, 2]:
         cv.fillPoly(img, [cube[faces[i]].reshape((-1, 1, 2))],
                     col_face)
-    thickness = random_state.randint(min_dim * 0.01, min_dim * 0.015)
+    thickness = random_state.randint(min_dim * 0.003, min_dim * 0.015)
     for i in [0, 1, 2]:
         for j in [0, 1, 2, 3]:
             col_edge = (col_face + 128
