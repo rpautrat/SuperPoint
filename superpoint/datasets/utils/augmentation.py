@@ -267,3 +267,48 @@ def random_crop(img, keypoints, random_state=None, min_crop_ratio=0.5):
     new_keypoints[:, 0] = (new_keypoints[:, 0] - start_col) * ratio_x
     new_keypoints[:, 1] = (new_keypoints[:, 1] - start_row) * ratio_y
     return (cv.resize(cropped_img, (shape[1], shape[0])), new_keypoints)
+
+
+def add_shade(img, keypoints, random_state=None, max_nb_ellipses=20,
+              transparency=0.4, kernel_size_interval=(150, 250)):
+    """ Overlay the image with several shades
+    Parameters:
+      max_nb_ellipses: number max of shades
+      transparency: level of transparency of the shades (1 = no shade)
+      kernel_size_interval: interval of the kernel used to blur the shades
+    """
+    if random_state is None:
+        random_state = np.random.RandomState(None)
+
+    centers = np.empty((0, 2), dtype=np.int)
+    rads = np.empty((0, 1), dtype=np.int)
+    min_dim = min(img.shape) / 4
+    shaded_img = img.copy()
+    for i in range(max_nb_ellipses):
+        ax = int(max(random_state.rand() * min_dim, min_dim / 5))
+        ay = int(max(random_state.rand() * min_dim, min_dim / 5))
+        max_rad = max(ax, ay)
+        x = random_state.randint(max_rad, img.shape[1] - max_rad)  # center
+        y = random_state.randint(max_rad, img.shape[0] - max_rad)
+        new_center = np.array([[x, y]])
+
+        # Check that the ellipsis will not overlap with pre-existing shapes
+        diff = centers - new_center
+        if np.any(max_rad > (np.sqrt(np.sum(diff * diff, axis=1)) - rads)):
+            continue
+        centers = np.concatenate([centers, new_center], axis=0)
+        rads = np.concatenate([rads, np.array([[max_rad]])], axis=0)
+
+        col = random_state.randint(256)  # color of the shade
+        angle = random_state.rand() * 90
+        cv.ellipse(shaded_img, (x, y), (ax, ay), angle, 0, 360, col, -1)
+    shaded_img = shaded_img.astype(float)
+    kernel_size = int(kernel_size_interval[0] + random_state.rand() *
+                      (kernel_size_interval[1] - kernel_size_interval[0]))
+    if (kernel_size % 2) == 0:  # kernel_size has to be odd
+        kernel_size += 1
+    cv.GaussianBlur(shaded_img, (kernel_size, kernel_size), 0, shaded_img)
+    mask = np.where(shaded_img != img)
+    shaded_img[mask] = (1 - transparency) * shaded_img[mask] + transparency * img[mask]
+    shaded_img = np.clip(shaded_img, 0, 255)
+    return (shaded_img.astype(np.uint8), keypoints)
