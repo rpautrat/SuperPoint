@@ -92,7 +92,8 @@ def resize_after_crop(orig_img, cropped_img, keypoints, random_state=None):
     return (cv.resize(resized_img, (shape[1], shape[0])), new_keypoints)
 
 
-def crop_after_transform(orig_img, warped_img, transform, keypoints, random_state=None):
+def crop_after_transform(orig_img, warped_img, transform,
+                         orig_keypoints, keypoints, random_state=None):
     """ Crop img after transform has been applied """
     shape = warped_img.shape
     # Compute the new location of the corners
@@ -113,9 +114,9 @@ def crop_after_transform(orig_img, warped_img, transform, keypoints, random_stat
     max_col = min([shape[1], corners[2, 0] + 1, corners[3, 0] + 1])
     if max_row < min_row + 50 or max_col < min_col + 50:  # retry if too small
         if transform.shape[0] == 2:  # affine transform
-            return affine_transform(orig_img, random_state)
+            return affine_transform(orig_img, orig_keypoints, random_state)
         else:  # homography
-            return perspective_transform(orig_img, random_state)
+            return perspective_transform(orig_img, orig_keypoints, random_state)
     cropped_img = warped_img[int(min_row):int(max_row), int(min_col):int(max_col)]
 
     # Crop the keypoints
@@ -155,7 +156,8 @@ def affine_transform(img, keypoints, random_state=None, affine_params=(0.05, 0.1
                                                 axis=1))
     new_keypoints = np.transpose(np.dot(M, new_keypoints))
 
-    return crop_after_transform(img, warped_img, M, new_keypoints, random_state)
+    return crop_after_transform(img, warped_img, M, keypoints,
+                                new_keypoints, random_state)
 
 
 def perspective_transform(img, keypoints, random_state=None, param=0.002):
@@ -190,8 +192,8 @@ def perspective_transform(img, keypoints, random_state=None, param=0.002):
     warped_col0 = np.divide(warped_col0, warped_col2)
     warped_col1 = np.divide(warped_col1, warped_col2)
     new_keypoints = np.concatenate([warped_col0[:, None], warped_col1[:, None]], axis=1)
-    return crop_after_transform(img, warped_img,
-                                perspective_transform, new_keypoints, random_state)
+    return crop_after_transform(img, warped_img, perspective_transform,
+                                keypoints, new_keypoints, random_state)
 
 
 def elastic_transform(img, keypoints, random_state=None,
