@@ -1,0 +1,12 @@
+data:
+    name: 'synthetic_shapes'
+    primitives: 'all'
+    cache_in_memory: true
+    validation_size: 100
+model:
+    name: 'magic_point'
+    batch_size: 50
+    eval_batch_size: 50
+    learning_rate: 0.001
+train_iter: 100000
+eval_iter: 500

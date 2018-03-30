@@ -1,0 +1,10 @@
+data:
+    name: 'synthetic_shapes'
+    primitive: 'all'
+    cache_in_memory: true
+model:
+    name: 'classical_detectors'
+    method: 'harris'  # 'shi' 'fast'
+    batch_size: 50  # unused
+    learning_rate: 0.001  # unused
+eval_iter: 500
