@@ -6,6 +6,14 @@ from scipy.ndimage.filters import gaussian_filter
 """ Data augmentation of 2D images """
 
 
+def keep_points_inside(points, size):
+    """ Keep only the points whose coordinates are inside the dimensions of
+    the image of size 'size' """
+    mask = (points[:, 0] >= 0) & (points[:, 0] < size[1]) &\
+           (points[:, 1] >= 0) & (points[:, 1] < size[0])
+    return points[mask, :]
+
+
 def additive_gaussian_noise(img, keypoints, random_state=None, std=(5, 95)):
     """ Add gaussian noise to the current image pixel-wise
     Parameters:
@@ -89,6 +97,7 @@ def resize_after_crop(orig_img, cropped_img, keypoints, random_state=None):
     # Resize the keypoints
     new_keypoints[:, 0] *= ratio_x
     new_keypoints[:, 1] *= ratio_y
+    new_keypoints = keep_points_inside(new_keypoints, shape)
     return (cv.resize(resized_img, (shape[1], shape[0])), new_keypoints)
 
 
@@ -314,3 +323,32 @@ def add_shade(img, keypoints, random_state=None, max_nb_ellipses=20,
     shaded_img[mask] = (1 - transparency) * shaded_img[mask] + transparency * img[mask]
     shaded_img = np.clip(shaded_img, 0, 255)
     return (shaded_img.astype(np.uint8), keypoints)
+
+
+def motion_blur(img, keypoints, random_state=None, speed=10, alpha=0.3):
+    """ Add a motion blur in a random direction
+    Parameters:
+      speed: 'speed' of the motion (norm of the translation vector)
+      alpha: parameter controlling the alpha channel
+    """
+    if random_state is None:
+        random_state = np.random.RandomState(None)
+
+    # Prepare the translation
+    angle = random_state.rand() * 2 * math.pi  # direction of the motion
+    trans_x = speed * math.cos(angle)
+    trans_y = speed * math.sin(angle)
+    trans_matrix = np.array([[1, 0, trans_x], [0, 1, trans_y]])
+
+    # Warp and superimpose the original and moved images
+    moved_img = cv.warpAffine(img, trans_matrix, img.shape[::-1])
+    mask = np.where(moved_img == 0)
+    moved_img[mask] = img[mask]
+    moved_img = alpha * moved_img + (1 - alpha) * img
+    cv.GaussianBlur(moved_img, (9, 9), 0, moved_img)
+    moved_img = np.clip(moved_img, 0, 255).astype(np.uint8)
+
+    # Update the keypoints
+    new_keypoints = keypoints + alpha * np.array([trans_x, trans_y])
+    new_keypoints = keep_points_inside(new_keypoints, img.shape)
+    return (moved_img, new_keypoints)
