@@ -102,6 +102,7 @@ class BaseModel(metaclass=ABCMeta):
         self.n_gpus = n_gpus
         self.graph = tf.get_default_graph()
         self.name = self.__class__.__name__.lower()  # get child name
+        self.trainable = getattr(self, 'trainable', True)
 
         # Update config
         self.config = self._default_config
@@ -242,7 +243,8 @@ class BaseModel(metaclass=ABCMeta):
                 data = iterator.get_next()
 
             # Build the actual training and evaluation models
-            self._train_graph(data)
+            if self.trainable:
+                self._train_graph(data)
             self._eval_graph(data)
             self.summaries = tf.summary.merge_all()
 
@@ -264,14 +266,17 @@ class BaseModel(metaclass=ABCMeta):
 
         self.sess.run([tf.global_variables_initializer(),
                        tf.local_variables_initializer()])
-        with tf.device('/cpu:0'):
-            self.saver = tf.train.Saver(save_relative_paths=True)
-        self.graph.finalize()
 
     def train(self, iterations, validation_interval=100, output_dir=None, profile=False):
+        assert self.trainable, 'Model is not trainable.'
         assert 'training' in self.datasets, 'Training dataset is required.'
         if output_dir is not None:
             train_writer = tf.summary.FileWriter(output_dir)
+        if not getattr(self, 'saver', False):
+            with tf.device('/cpu:0'):
+                self.saver = tf.train.Saver(save_relative_paths=True)
+        if not self.graph.finalized:
+            self.graph.finalize()
         if profile:
             options = tf.RunOptions(trace_level=tf.RunOptions.FULL_TRACE)
             run_metadata = tf.RunMetadata()
@@ -359,11 +364,13 @@ class BaseModel(metaclass=ABCMeta):
         return metrics
 
     def load(self, checkpoint_path):
+        with tf.device('/cpu:0'):
+            saver = tf.train.Saver(save_relative_paths=True)
         if tf.gfile.IsDirectory(checkpoint_path):
             checkpoint_path = tf.train.latest_checkpoint(checkpoint_path)
             if checkpoint_path is None:
                 raise ValueError('Checkpoint directory is empty.')
-        self.saver.restore(self.sess, checkpoint_path)
+        saver.restore(self.sess, checkpoint_path)
 
     def save(self, checkpoint_path):
         step = self.sess.run(self.global_step)
