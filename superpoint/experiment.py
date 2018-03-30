@@ -36,7 +36,8 @@ def predict(config, output_dir, n_iter):
     pred = []
     data = []
     with _init_graph(config, with_dataset=True) as (net, dataset):
-        net.load(output_dir)
+        if net.trainable:
+            net.load(output_dir)
         test_set = dataset.get_test_set()
         for _ in range(n_iter):
             data.append(next(test_set))
