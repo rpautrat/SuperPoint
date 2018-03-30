@@ -118,7 +118,7 @@ class SyntheticShapes(BaseDataset):
 
         # Shuffle
         for s in splits:
-            perm = np.random.permutation(len(splits[s]['images']))
+            perm = np.random.RandomState(0).permutation(len(splits[s]['images']))
             for obj in ['images', 'points']:
                 splits[s][obj] = np.array(splits[s][obj])[perm].tolist()
         return splits

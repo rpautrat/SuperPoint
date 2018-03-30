@@ -1,6 +1,8 @@
 from abc import ABCMeta, abstractmethod
 import tensorflow as tf
 
+from superpoint.utils.tools import dict_update
+
 
 class BaseDataset(metaclass=ABCMeta):
     """Base model class.
@@ -95,8 +97,7 @@ class BaseDataset(metaclass=ABCMeta):
 
     def __init__(self, **config):
         # Update config
-        self.config = getattr(self, 'default_config', {})
-        self.config.update(config)
+        self.config = dict_update(getattr(self, 'default_config', {}), config)
 
         self.dataset = self._init_dataset(**self.config)
 
