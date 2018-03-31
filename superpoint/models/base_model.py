@@ -114,7 +114,6 @@ class BaseModel(metaclass=ABCMeta):
             assert r in self.config, 'Required configuration entry: \'{}\''.format(r)
         assert set(self.datasets) <= self.dataset_names, \
             'Unknown dataset name: {}'.format(set(self.datasets)-self.dataset_names)
-        assert self.datasets or (data_shape is not None), 'Incompatibiity in data shape.'
         assert n_gpus > 0, 'TODO: CPU-only training is currently not supported.'
 
         with tf.variable_scope(self.name, reuse=tf.AUTO_REUSE):
@@ -249,6 +248,8 @@ class BaseModel(metaclass=ABCMeta):
             self.summaries = tf.summary.merge_all()
 
         # Prediction network with feed_dict
+        if self.data_shape is None:
+            self.data_shape = {i: spec['shape'] for i, spec in self.input_spec.items()}
         self.pred_in = {i: tf.placeholder(spec['type'], shape=self.data_shape[i])
                         for i, spec in self.input_spec.items()}
         self._pred_graph(self.pred_in)

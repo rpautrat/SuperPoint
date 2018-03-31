@@ -58,7 +58,8 @@ def _init_graph(config, with_dataset=False):
 
     dataset = get_dataset(config['data']['name'])(**config['data'])
     model = get_model(config['model']['name'])(
-            data=dataset.get_tf_datasets(), n_gpus=n_gpus, **config['model'])
+            data={} if with_dataset else dataset.get_tf_datasets(),
+            n_gpus=n_gpus, **config['model'])
     model.__enter__()
     if with_dataset:
         yield model, dataset
