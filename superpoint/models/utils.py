@@ -23,9 +23,9 @@ def detector_head(inputs, **config):
                 prob, config['grid_size'], data_format='NCHW' if cfirst else 'NHWC')
         prob = tf.squeeze(prob, axis=cindex)
 
-        pred = tf.to_int32(tf.greater_equal(prob, config['detection_threshold']))
+    return {'logits': x, 'prob': prob}
 
-    return {'logits': x, 'prob': prob, 'pred': pred}
+
 def spatial_nms(prob, size):
     """Performs non maximum suppression on the heatmap using max-pooling. This method is
     faster than box_nms, but does not suppress contiguous that have the same probability

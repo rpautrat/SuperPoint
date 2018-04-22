@@ -2,7 +2,7 @@ import tensorflow as tf
 
 from .base_model import BaseModel, Mode
 from .backbones.vgg import vgg_backbone
-from .utils import detector_head
+from .utils import detector_head, box_nms
 
 
 class MagicPoint(BaseModel):
@@ -26,6 +26,12 @@ class MagicPoint(BaseModel):
 
         features = vgg_backbone(im, **config)
         outputs = detector_head(features, **config)
+        prob = outputs['prob']
+        if config['nms']:
+            prob = tf.map_fn(lambda p: box_nms(p, config['nms']), prob)
+            outputs['prob_nms'] = prob
+        pred = tf.to_int32(tf.greater_equal(prob, config['detection_threshold']))
+        outputs['pred'] = pred
 
         return outputs
 
