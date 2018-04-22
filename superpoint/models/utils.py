@@ -11,7 +11,7 @@ def detector_head(inputs, **config):
     cfirst = config['data_format'] == 'channels_first'
     cindex = 1 if cfirst else -1  # index of the channel
 
-    with tf.variable_scope('detector'):
+    with tf.variable_scope('detector', reuse=tf.AUTO_REUSE):
         x = vgg_block(inputs, 256, 3, 'conv1', **params_conv)
         x = vgg_block(inputs, 1+pow(config['grid_size'], 2), 1, 'conv2', **params_conv)
 
@@ -25,6 +25,35 @@ def detector_head(inputs, **config):
         pred = tf.to_int32(tf.greater_equal(prob, config['detection_threshold']))
 
     return {'logits': x, 'prob': prob, 'pred': pred}
+
+
+def descriptor_head(inputs, **config):
+    params_conv = {'padding': 'SAME', 'data_format': config['data_format'],
+                   'activation': tf.nn.relu, 'batch_normalization': True,
+                   'training': config['training']}
+    cfirst = config['data_format'] == 'channels_first'
+    cindex = 1 if cfirst else -1  # index of the channel
+
+    with tf.variable_scope('descriptor', reuse=tf.AUTO_REUSE):
+        x = vgg_block(inputs, 256, 3, 'conv1', **params_conv)
+        x = vgg_block(inputs, config['descriptor_size'], 1, 'conv2', **params_conv)
+
+        if cindex == -1:
+            with tf.device('/cpu:0'):
+                desc = tf.image.resize_bicubic(x,
+                                               config['grid_size'] *
+                                               tf.shape(x)[1:3])
+        else:  # cindex == 1
+            # resize_bicubic only supports channels last
+            desc = tf.transpose(x, [0, 2, 3, 1])
+            with tf.device('/cpu:0'):
+                desc = tf.image.resize_bicubic(x,
+                                               config['grid_size'] *
+                                               tf.shape(desc)[1:3])
+            desc = tf.transpose(desc, [0, 3, 1, 2])
+        desc = tf.nn.l2_normalize(desc, cindex)
+
+    return {'logits': x, 'descriptor': desc}
 
 
 def homography_adaptation(image, net, config):
@@ -74,16 +103,16 @@ def sample_homography(
         n_scales=10, n_angles=10):
     """Sample a random valid homography.
 
-    Computes the homography transformation between a random patch in the orignal image
-    and a wrapped projection with the same image size.
-    As in `tf.contrib.image.transform`, it maps the output point (wrapped patch) to a
-    transformed input point (orginal patch).
-    The original patch, which is intialized with a simple half-size centered crop, is
+    Computes the homography transformation between a random patch in the original image
+    and a warped projection with the same image size.
+    As in `tf.contrib.image.transform`, it maps the output point (warped patch) to a
+    transformed input point (original patch).
+    The original patch, which is initialized with a simple half-size centered crop, is
     iteratively projected, scaled, rotated and translated.
 
     Arguments:
         shape: A rank-2 `Tensor` specifying the height and width of the original image.
-        prespective: A boolean that enables the perspective and affine transformations.
+        perspective: A boolean that enables the perspective and affine transformations.
         scaling: A boolean that enables the random scaling of the patch.
         rotation: A boolean that enables the random rotation of the patch.
         translation: A boolean that enables the random translation of the patch.
@@ -163,15 +192,105 @@ def invert_homography(H):
 def flat2mat(H):
     """
     Converts a flattened homography transformation with shape `[1, 8]` to its
-    corresponding homography matrix with shape `[1, 9, 9]`.
+    corresponding homography matrix with shape `[1, 3, 3]`.
     """
     return tf.reshape(tf.concat([H, tf.ones([tf.shape(H)[0], 1])], axis=1), [-1, 3, 3])
 
 
 def mat2flat(H):
     """
-    Converts an homography matrix with shape `[1, 9, 9]` to its corresponding flattened
+    Converts an homography matrix with shape `[1, 3, 3]` to its corresponding flattened
     homography transformation with shape `[1, 8]`.
     """
     H = tf.reshape(H, [-1, 9])
     return (H / H[:, 8:9])[:, :8]
+
+
+def warp_keypoints_to_list(packed_arg):
+    """
+    Warp a map of keypoints (pixel is 1 for a keypoint and 0 else) with
+    the INVERSE of the homography H.
+    The inverse is used to be coherent with tf.contrib.image.transform
+
+    Arguments:
+        packed_arg: a tuple equal to (keypoints_map, H)
+
+    Returns: a Tensor of size (num_keypoints, 2) with the new coordinates
+             of the warped keypoints.
+    """
+    keypoints_map = packed_arg[0]
+    H = packed_arg[1]
+    if len(H.shape.as_list()) < 2:
+        H = tf.expand_dims(H, 0)  # add a batch of 1
+    # Get the keypoints list in homogeneous format
+    keypoints = tf.cast(tf.where(keypoints_map > 0), tf.float32)
+    keypoints = keypoints[:, ::-1]
+    n_keypoints = tf.shape(keypoints)[0]
+    keypoints = tf.concat([keypoints, tf.ones([n_keypoints, 1], dtype=tf.float32)], 1)
+
+    # Apply the homography
+    H_inv = invert_homography(H)
+    H_inv = flat2mat(H_inv)
+    H_inv = tf.transpose(H_inv[0, ...])
+    warped_keypoints = tf.matmul(keypoints, H_inv)
+    warped_keypoints = tf.round(warped_keypoints[:, :2]
+                                / warped_keypoints[:, 2:])
+    warped_keypoints = warped_keypoints[:, ::-1]
+
+    return warped_keypoints
+
+
+def warp_keypoints_to_map(packed_arg):
+    """
+    Warp a map of keypoints (pixel is 1 for a keypoint and 0 else) with
+    the INVERSE of the homography H.
+    The inverse is used to be coherent with tf.contrib.image.transform
+
+    Arguments:
+        packed_arg: a tuple equal to (keypoints_map, H)
+
+    Returns: a map of keypoints with of the same format as the original keypoints map.
+    """
+    warped_keypoints = tf.to_int32(warp_keypoints_to_list(packed_arg))
+    n_keypoints = tf.shape(warped_keypoints)[0]
+    shape = tf.shape(packed_arg[0])
+
+    # Remove points outside the image
+    zeros = tf.cast(tf.zeros([n_keypoints]), dtype=tf.bool)
+    ones = tf.cast(tf.ones([n_keypoints]), dtype=tf.bool)
+    loc = tf.logical_and(tf.where(warped_keypoints[:, 0] >= 0, ones, zeros),
+                         tf.where(warped_keypoints[:, 0] < shape[0],
+                                  ones,
+                                  zeros))
+    loc = tf.logical_and(loc, tf.where(warped_keypoints[:, 1] >= 0, ones, zeros))
+    loc = tf.logical_and(loc,
+                         tf.where(warped_keypoints[:, 1] < shape[1],
+                                  ones,
+                                  zeros))
+    warped_keypoints = tf.boolean_mask(warped_keypoints, loc)
+
+    # Output the new map of keypoints
+    new_map = tf.scatter_nd(warped_keypoints,
+                            tf.ones([tf.shape(warped_keypoints)[0]], dtype=tf.float32),
+                            shape)
+
+    return new_map
+
+
+def tf_repeat(tensor, repeats):
+    """
+    Equivalent of np.repeat but for Tensors.
+
+    Arguments:
+        tensor: A Tensor (1-D or higher).
+        repeats: A list indicating the number of repeat for each dimension
+                 (length must be the same as the number of dimensions in tensor).
+
+    Returns: A Tensor with the same type as tensor and a shape of tensor.shape * repeats
+    """
+    with tf.variable_scope("repeat"):
+        expanded_tensor = tf.expand_dims(tensor, -1)
+        multiples = [1] + repeats
+        tiled_tensor = tf.tile(expanded_tensor, multiples)
+        repeated_tensor = tf.reshape(tiled_tensor, tf.shape(tensor) * repeats)
+    return repeated_tensor
