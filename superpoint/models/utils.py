@@ -26,6 +26,47 @@ def detector_head(inputs, **config):
         pred = tf.to_int32(tf.greater_equal(prob, config['detection_threshold']))
 
     return {'logits': x, 'prob': prob, 'pred': pred}
+def spatial_nms(prob, size):
+    """Performs non maximum suppression on the heatmap using max-pooling. This method is
+    faster than box_nms, but does not suppress contiguous that have the same probability
+    value.
+
+    Arguments:
+        prob: the probability heatmap, with shape `[H, W]`.
+        size: a scalar, the size of the pooling window.
+    """
+
+    with tf.name_scope('spatial_nms'):
+        prob = tf.expand_dims(tf.expand_dims(prob, axis=0), axis=-1)
+        pooled = tf.nn.max_pool(
+                prob, ksize=[1, size, size, 1], strides=[1, 1, 1, 1], padding='SAME')
+        prob = tf.where(tf.equal(prob, pooled), prob, tf.zeros_like(prob))
+        return tf.squeeze(prob)
+
+
+def box_nms(prob, size, iou=0.1, min_prob=0.01):
+    """Performs non maximum suppression on the heatmap by considering hypothetical
+    bounding boxes centered at each pixel's location (e.g. corresponding to the receptive
+    field).
+
+    Arguments:
+        prob: the probability heatmap, with shape `[H, W]`.
+        size: a scalar, the size of the bouding boxes.
+        iou: a scalar, the IoU overlap threshold.
+        min_prob: a threshold under which all probabilities are discarded before NMS.
+    """
+    with tf.name_scope('box_nms'):
+        pts = tf.where(tf.greater_equal(prob, min_prob))
+        size = tf.constant(size/2.)
+        boxes = tf.concat([tf.to_float(pts)-size, tf.to_float(pts)+size], axis=1)
+        scores = tf.gather_nd(prob, pts)
+        with tf.device('/cpu:0'):
+            indices = tf.image.non_max_suppression(
+                    boxes, scores, tf.shape(boxes)[0], iou)
+            pts = tf.gather(pts, indices)
+        scores = tf.gather(scores, indices)
+        prob = tf.scatter_nd(tf.to_int32(pts), scores, tf.shape(prob))
+    return prob
 
 
 def homography_adaptation(image, net, config):
