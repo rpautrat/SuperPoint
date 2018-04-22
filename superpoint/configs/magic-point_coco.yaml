@@ -8,6 +8,10 @@ model:
     batch_size: 50
     eval_batch_size: 50
     learning_rate: 0.001
-    detection_threshold: 0.3
+    detection_threshold: 0.9
+    nms: 8
+    homography_adaptation:
+        num: 100
+        aggregation: 'max'
 train_iter: 100000
 eval_iter: 50

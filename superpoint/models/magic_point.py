@@ -2,7 +2,7 @@ import tensorflow as tf
 
 from .base_model import BaseModel, Mode
 from .backbones.vgg import vgg_backbone
-from .utils import detector_head, box_nms
+from .utils import detector_head, homography_adaptation_batch, box_nms
 
 
 class MagicPoint(BaseModel):
@@ -14,18 +14,35 @@ class MagicPoint(BaseModel):
             'data_format': 'channels_first',
             'grid_size': 8,
             'detection_threshold': 0.4,
+            'homography_adaptation': {
+                'num': 0,
+                'aggregation': 'max',
+                'homographies': {
+                    'translation': True,
+                    'scaling': True,
+                    'rotation': True,
+                    'perspective': False
+                },
+            },
+            'nms': 0,
     }
 
-    # TODO: add homography adaptation for pred, and evaluation ?
     def _model(self, inputs, mode, **config):
         config['training'] = (mode == Mode.TRAIN)
+        image = inputs['image']
 
-        im = inputs['image']
-        if config['data_format'] == 'channels_first':
-            im = tf.transpose(im, [0, 3, 1, 2])
+        def net(image):
+            if config['data_format'] == 'channels_first':
+                image = tf.transpose(image, [0, 3, 1, 2])
+            features = vgg_backbone(image, **config)
+            outputs = detector_head(features, **config)
+            return outputs
 
-        features = vgg_backbone(im, **config)
-        outputs = detector_head(features, **config)
+        if (mode == Mode.PRED) and config['homography_adaptation']['num']:
+            outputs = homography_adaptation_batch(image, net, config)
+        else:
+            outputs = net(image)
+
         prob = outputs['prob']
         if config['nms']:
             prob = tf.map_fn(lambda p: box_nms(p, config['nms']), prob)
