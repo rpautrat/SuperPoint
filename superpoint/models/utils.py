@@ -221,7 +221,8 @@ def sample_homography(
                 tf.expand_dims(scales, 1), 1) + center
         valid = tf.logical_and(tf.greater_equal(scaled, 0.), tf.less(scaled, 1.))
         valid = tf.where(tf.reduce_all(valid, axis=[1, 2]))
-        idx = tf.random_shuffle(valid)[0]
+        with tf.device('/cpu:0'):
+            idx = tf.random_shuffle(valid)[0]
         pts2 = scaled[idx[0]]
 
     # Random rotation
@@ -236,7 +237,8 @@ def sample_homography(
                 rot_mat) + center
         valid = tf.logical_and(tf.greater_equal(rotated, 0.), tf.less(rotated, 1.))
         valid = tf.where(tf.reduce_all(valid, axis=[1, 2]))
-        idx = tf.random_shuffle(valid)[0]
+        with tf.device('/cpu:0'):
+            idx = tf.random_shuffle(valid)[0]
         pts2 = rotated[idx[0]]
 
     # Random translation
