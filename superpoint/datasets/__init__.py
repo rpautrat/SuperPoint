@@ -1,5 +1,5 @@
 def get_dataset(name):
-    mod = __import__('datasets.{}'.format(name), fromlist=[''])
+    mod = __import__('superpoint.datasets.{}'.format(name), fromlist=[''])
     return getattr(mod, _module_to_class(name))
 
 

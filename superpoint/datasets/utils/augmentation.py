@@ -5,6 +5,23 @@ from scipy.ndimage.filters import gaussian_filter
 
 """ Data augmentation of 2D images """
 
+augmentations = [
+        'additive_gaussian_noise',
+        'additive_speckle_noise',
+        'change_brightness',
+        'change_contrast',
+        'affine_transform',
+        'perspective_transform',
+        'elastic_transform',
+        'random_crop',
+        'add_shade',
+        'motion_blur'
+]
+
+
+def dummy(image, keypoints):
+    return image, keypoints
+
 
 def keep_points_inside(points, size):
     """ Keep only the points whose coordinates are inside the dimensions of
@@ -22,7 +39,7 @@ def additive_gaussian_noise(img, keypoints, random_state=None, std=(5, 95)):
     if random_state is None:
         random_state = np.random.RandomState(None)
     sigma = std[0] + random_state.rand() * std[1]
-    gaussian_noise = random_state.randn(img.shape[0], img.shape[1]) * sigma
+    gaussian_noise = random_state.randn(*img.shape) * sigma
     noisy_img = img + gaussian_noise
     noisy_img = np.clip(noisy_img, 0, 255).astype(np.uint8)
     return (noisy_img, keypoints)
@@ -325,30 +342,46 @@ def add_shade(img, keypoints, random_state=None, max_nb_ellipses=20,
     return (shaded_img.astype(np.uint8), keypoints)
 
 
-def motion_blur(img, keypoints, random_state=None, speed=10, alpha=0.3):
-    """ Add a motion blur in a random direction
-    Parameters:
-      speed: 'speed' of the motion (norm of the translation vector)
-      alpha: parameter controlling the alpha channel
-    """
-    if random_state is None:
-        random_state = np.random.RandomState(None)
+def motion_blur(img, keypoints, ksize=10):
+    mode = np.random.choice(['h', 'v', 'diag_down', 'diag_up'])
+    idx = int((ksize-1)/2)
+    kernel = np.zeros((ksize, ksize))
+    if mode == 'h':
+        kernel[idx, :] = 1./ksize
+    elif mode == 'v':
+        kernel[:, idx] = 1./ksize
+    elif mode == 'diag_down':
+        kernel = np.eye(ksize)/ksize
+    elif mode == 'diag_up':
+        kernel = np.flip(np.eye(ksize), 0)/ksize
+    img = cv.filter2D(img.astype(np.uint8), -1, kernel)
+    return img, keypoints
 
-    # Prepare the translation
-    angle = random_state.rand() * 2 * math.pi  # direction of the motion
-    trans_x = speed * math.cos(angle)
-    trans_y = speed * math.sin(angle)
-    trans_matrix = np.array([[1, 0, trans_x], [0, 1, trans_y]])
 
-    # Warp and superimpose the original and moved images
-    moved_img = cv.warpAffine(img, trans_matrix, img.shape[::-1])
-    mask = np.where(moved_img == 0)
-    moved_img[mask] = img[mask]
-    moved_img = alpha * moved_img + (1 - alpha) * img
-    cv.GaussianBlur(moved_img, (9, 9), 0, moved_img)
-    moved_img = np.clip(moved_img, 0, 255).astype(np.uint8)
+# def motion_blur(img, keypoints, random_state=None, speed=10, alpha=0.3):
+    # """ Add a motion blur in a random direction
+    # Parameters:
+      # speed: 'speed' of the motion (norm of the translation vector)
+      # alpha: parameter controlling the alpha channel
+    # """
+    # if random_state is None:
+        # random_state = np.random.RandomState(None)
 
-    # Update the keypoints
-    new_keypoints = keypoints + alpha * np.array([trans_x, trans_y])
-    new_keypoints = keep_points_inside(new_keypoints, img.shape)
-    return (moved_img, new_keypoints)
+    # # Prepare the translation
+    # angle = random_state.rand() * 2 * math.pi  # direction of the motion
+    # trans_x = speed * math.cos(angle)
+    # trans_y = speed * math.sin(angle)
+    # trans_matrix = np.array([[1, 0, trans_x], [0, 1, trans_y]])
+
+    # # Warp and superimpose the original and moved images
+    # moved_img = cv.warpAffine(img, trans_matrix, img.shape[::-1])
+    # mask = np.where(moved_img == 0)
+    # moved_img[mask] = img[mask]
+    # moved_img = alpha * moved_img + (1 - alpha) * img
+    # # cv.GaussianBlur(moved_img, (9, 9), 0, moved_img)
+    # moved_img = np.clip(moved_img, 0, 255).astype(np.uint8)
+
+    # # Update the keypoints
+    # new_keypoints = keypoints + alpha * np.array([trans_x, trans_y])
+    # new_keypoints = keep_points_inside(new_keypoints, img.shape)
+    # return (moved_img, new_keypoints)

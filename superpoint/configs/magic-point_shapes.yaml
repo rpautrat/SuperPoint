@@ -3,6 +3,16 @@ data:
     primitives: 'all'
     cache_in_memory: true
     validation_size: 100
+    suffix: '120-160'
+    preprocessing:
+        blur_size: 11
+        resize: [120, 160]
+    augmentations:
+        enable: false
+        primitives: ['additive_gaussian_noise', 'motion_blur']
+        params:
+            additive_gaussian_noise: {std: [3, 10]}
+            motion_blur: {ksize: 7}
 model:
     name: 'magic_point'
     batch_size: 50
