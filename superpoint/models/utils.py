@@ -180,7 +180,7 @@ def homography_adaptation_batch(images, net, config):
 
 def sample_homography(
         shape, perspective=True, scaling=True, rotation=True, translation=True,
-        n_scales=10, n_angles=10):
+        n_scales=5, n_angles=16, scaling_amplitude=0.1, perspective_amplitude=0.1):
     """Sample a random valid homography.
 
     Computes the homography transformation between a random patch in the orignal image
@@ -210,12 +210,13 @@ def sample_homography(
 
     # Random perspective and affine perturbations
     if perspective:
-        pts2 += tf.truncated_normal([4, 2], 0., 0.25/2)
+        pts2 += tf.truncated_normal([4, 2], 0., min(perspective_amplitude, 0.25)/2)
 
     # Random scaling
     # sample several scales, check collision with borders, randomly pick a valid one
     if scaling:
-        scales = tf.concat([[1.], tf.truncated_normal([n_scales], 1, 0.75/2)], 0)
+        scales = tf.concat(
+                [[1.], tf.truncated_normal([n_scales], 1, scaling_amplitude/2)], 0)
         center = tf.reduce_mean(pts2, axis=0, keepdims=True)
         scaled = tf.expand_dims(pts2 - center, axis=0) * tf.expand_dims(
                 tf.expand_dims(scales, 1), 1) + center
@@ -224,6 +225,13 @@ def sample_homography(
         with tf.device('/cpu:0'):
             idx = tf.random_shuffle(valid)[0]
         pts2 = scaled[idx[0]]
+
+    # Random translation
+    if translation:
+        t_min, t_max = tf.reduce_min(pts2, axis=0), tf.reduce_min(1 - pts2, axis=0)
+        pts2 += tf.expand_dims(tf.stack([tf.random_uniform((), -t_min[0], t_max[0]),
+                                         tf.random_uniform((), -t_min[1], t_max[1])]),
+                               axis=0)
 
     # Random rotation
     # sample several rotations, check collision with borders, randomly pick a valid one
@@ -240,13 +248,6 @@ def sample_homography(
         with tf.device('/cpu:0'):
             idx = tf.random_shuffle(valid)[0]
         pts2 = rotated[idx[0]]
-
-    # Random translation
-    if translation:
-        t_min, t_max = tf.reduce_min(pts2, axis=0), tf.reduce_min(1 - pts2, axis=0)
-        pts2 += tf.expand_dims(tf.stack([tf.random_uniform((), -t_min[0], t_max[0]),
-                                         tf.random_uniform((), -t_min[1], t_max[1])]),
-                               axis=0)
 
     # Rescale to actual size
     shape = tf.to_float(shape[::-1])  # different convention [y, x]
