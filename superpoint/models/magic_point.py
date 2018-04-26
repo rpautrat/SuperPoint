@@ -14,17 +14,9 @@ class MagicPoint(BaseModel):
             'data_format': 'channels_first',
             'grid_size': 8,
             'detection_threshold': 0.4,
-            'homography_adaptation': {
-                'num': 0,
-                'aggregation': 'max',
-                'homographies': {
-                    'translation': True,
-                    'scaling': True,
-                    'rotation': True,
-                    'perspective': False
-                },
-            },
+            'homography_adaptation': {'num': 0},
             'nms': 0,
+            'top_k': 0
     }
 
     def _model(self, inputs, mode, **config):
@@ -39,13 +31,15 @@ class MagicPoint(BaseModel):
             return outputs
 
         if (mode == Mode.PRED) and config['homography_adaptation']['num']:
-            outputs = homography_adaptation_batch(image, net, config)
+            outputs = homography_adaptation_batch(
+                    image, net, config['homography_adaptation'])
         else:
             outputs = net(image)
 
         prob = outputs['prob']
         if config['nms']:
-            prob = tf.map_fn(lambda p: box_nms(p, config['nms']), prob)
+            prob = tf.map_fn(lambda p: box_nms(p, config['nms'],
+                                               keep_top_k=config['top_k']), prob)
             outputs['prob_nms'] = prob
         pred = tf.to_int32(tf.greater_equal(prob, config['detection_threshold']))
         outputs['pred'] = pred

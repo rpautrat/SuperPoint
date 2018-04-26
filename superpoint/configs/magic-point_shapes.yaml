@@ -8,14 +8,14 @@ data:
         blur_size: 11
         resize: [120, 160]
     augmentations:
-        enable: false
+        enable: true
         primitives: ['additive_gaussian_noise', 'motion_blur']
         params:
-            additive_gaussian_noise: {std: [3, 10]}
-            motion_blur: {ksize: 7}
+            additive_gaussian_noise: {std: [3, 15]}
+            motion_blur: {ksize: 4}
 model:
     name: 'magic_point'
-    batch_size: 50
+    batch_size: 32
     eval_batch_size: 50
     learning_rate: 0.001
 train_iter: 100000

@@ -3,6 +3,7 @@ from tensorflow.contrib.image import transform as H_transform
 from math import pi
 
 from .backbones.vgg import vgg_block
+from superpoint.utils.tools import dict_update
 
 
 def detector_head(inputs, **config):
@@ -44,29 +45,49 @@ def spatial_nms(prob, size):
         return tf.squeeze(prob)
 
 
-def box_nms(prob, size, iou=0.1, min_prob=0.01):
+def box_nms(prob, size, iou=0.1, min_prob=0.01, keep_top_k=0):
     """Performs non maximum suppression on the heatmap by considering hypothetical
     bounding boxes centered at each pixel's location (e.g. corresponding to the receptive
-    field).
+    field). Optionally only keeps the top k detections.
 
     Arguments:
         prob: the probability heatmap, with shape `[H, W]`.
         size: a scalar, the size of the bouding boxes.
         iou: a scalar, the IoU overlap threshold.
         min_prob: a threshold under which all probabilities are discarded before NMS.
+        keep_top_k: an integer, the number of top scores to keep.
     """
     with tf.name_scope('box_nms'):
-        pts = tf.where(tf.greater_equal(prob, min_prob))
+        pts = tf.to_float(tf.where(tf.greater_equal(prob, min_prob)))
         size = tf.constant(size/2.)
-        boxes = tf.concat([tf.to_float(pts)-size, tf.to_float(pts)+size], axis=1)
-        scores = tf.gather_nd(prob, pts)
+        boxes = tf.concat([pts-size, pts+size], axis=1)
+        scores = tf.gather_nd(prob, tf.to_int32(pts))
         with tf.device('/cpu:0'):
             indices = tf.image.non_max_suppression(
                     boxes, scores, tf.shape(boxes)[0], iou)
-            pts = tf.gather(pts, indices)
+        pts = tf.gather(pts, indices)
         scores = tf.gather(scores, indices)
+        if keep_top_k:
+            k = tf.minimum(tf.shape(scores)[0], tf.constant(keep_top_k))  # when fewer
+            scores, indices = tf.nn.top_k(scores, k)
+            pts = tf.gather(pts, indices)
         prob = tf.scatter_nd(tf.to_int32(pts), scores, tf.shape(prob))
     return prob
+
+
+homography_adaptation_default_config = {
+        'num': 1,
+        'aggregation': 'sum',
+        'homographies': {
+            'translation': True,
+            'rotation': True,
+            'scaling': True,
+            'perspective': True,
+            'scaling_amplitude': 0.1,
+            'perspective_amplitude': 0.05,
+        },
+        'filter_counts': 0
+}
 
 
 def homography_adaptation(image, net, config):
@@ -79,9 +100,8 @@ def homography_adaptation(image, net, config):
         image: A `Tensor` with shape `[H, W, 1]`.
         net: A function that takes an image as input, performs inference, and outputs the
             prediction dictionary.
-        config: A configuration dictionary, which contains the sub-dictionary
-            `'homography_adapatation'`, with various parameters such as the number of
-            sampled homographies `'num'`.
+        config: A configuration dictionary containing optional entries such as the number
+            of sampled homographies `'num'`, the aggregation method `'aggregation'`.
 
     Returns:
         A dictionary which contains the aggregated detection probabilities.
@@ -96,10 +116,11 @@ def homography_adaptation(image, net, config):
     images = tf.expand_dims(images, axis=0)
 
     shape = tf.shape(image)[:2]
+    config = dict_update(homography_adaptation_default_config, config)
 
     def step(i, probs, counts, images):
         # Sample image patch
-        H = sample_homography(shape, **config['homography_adaptation']['homographies'])
+        H = sample_homography(shape, **config['homographies'])
         H_inv = invert_homography(H)
         wrapped = H_transform(image, H, interpolation='BILINEAR')
         count = H_transform(tf.ones(shape), H_inv, interpolation='NEAREST')
@@ -144,7 +165,7 @@ def homography_adaptation(image, net, config):
         return i + 1, probs, counts, images
 
     _, probs, counts, images = tf.while_loop(
-            lambda i, p, c, im: tf.less(i, config['homography_adaptation']['num'] - 1),
+            lambda i, p, c, im: tf.less(i, config['num'] - 1),
             step,
             [0, probs, counts, images],
             parallel_iterations=1,
@@ -157,10 +178,17 @@ def homography_adaptation(image, net, config):
     counts = tf.reduce_sum(counts, axis=0)
     max_prob = tf.reduce_max(probs, axis=0)
     mean_prob = tf.reduce_sum(probs, axis=0) / counts
-    if config['homography_adaptation']['aggregation'] == 'max':
+
+    if config['aggregation'] == 'max':
         prob = max_prob
-    else:
+    elif config['aggregation'] == 'sum':
         prob = mean_prob
+    else:
+        raise ValueError('Unkown aggregation method: {}'.format(config['aggregation']))
+
+    if config['filter_counts']:
+        prob = tf.where(tf.greater_equal(counts, config['filter_counts']),
+                        prob, tf.zeros_like(prob))
 
     return {'prob': prob, 'counts': counts,
             'mean_prob': mean_prob, 'input_images': images, 'H_probs': probs}  # debug
