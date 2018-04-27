@@ -1,6 +1,4 @@
 import numpy as np
-from pathlib import Path
-import os
 from os import path as osp
 from glob import glob
 
@@ -28,18 +26,17 @@ def compute_tp_fp(data, remove_zero=1e-4, distance_thresh=2, simplified=False):
     mask = np.where(prob > remove_zero)
     prob = prob[mask]
     pred = np.array(mask).T
-    
+
     # When several detections match the same ground truth point, only pick
     # the one with the highest score  (the others are false positive)
     sort_idx = np.argsort(prob)[::-1]
     prob = prob[sort_idx]
     pred = pred[sort_idx]
 
-    # Compute 
     diff = np.expand_dims(pred, axis=1) - np.expand_dims(gt, axis=0)
     dist = np.linalg.norm(diff, axis=-1)
     matches = np.less_equal(dist, distance_thresh)
-    
+
     tp = []
     matched = np.zeros(len(gt))
     for m in matches:
@@ -53,12 +50,12 @@ def compute_tp_fp(data, remove_zero=1e-4, distance_thresh=2, simplified=False):
     tp = np.array(tp, bool)
     if simplified:
         tp = np.any(matches, axis=1)  # keeps multiple matches for the same gt point
-        n_gt = np.sum(np.minimum(np.sum(matches, axis=0), 1)) # buggy
+        n_gt = np.sum(np.minimum(np.sum(matches, axis=0), 1))  # buggy
     fp = np.logical_not(tp)
     return tp, fp, prob, n_gt
 
 
-def div0( a, b ):
+def div0(a, b):
     with np.errstate(divide='ignore', invalid='ignore'):
         c = np.true_divide(a, b)
         idx = ~np.isfinite(c)
@@ -126,7 +123,7 @@ def compute_loc_error(exper_name, prob_thresh=0.5, distance_thresh=2):
             return []
 
         diff = np.expand_dims(pred, axis=1) - np.expand_dims(gt, axis=0)
-        dist = np.linalg.norm(diff, axis=-1) 
+        dist = np.linalg.norm(diff, axis=-1)
         dist = np.min(dist, axis=1)
         correct_dist = dist[np.less_equal(dist, distance_thresh)]
         return correct_dist
@@ -135,3 +132,67 @@ def compute_loc_error(exper_name, prob_thresh=0.5, distance_thresh=2):
     for path in paths:
         error.append(loc_error_per_image(np.load(path)))
     return np.mean(np.concatenate(error))
+
+
+def compute_repeatability(exper_name, prob_thresh=0.5, distance_thresh=3):
+    """
+    Compute the repeatability. The experiment must contain in its output the prediction
+    on 2 images, an original image and a warped version of it, plus the homography
+    linking the 2 images.
+    """
+    def warp_keypoints(keypoints, H):
+        warped_col0 = np.add(np.sum(np.multiply(keypoints, H[0, :2]), axis=1), H[0, 2])
+        warped_col1 = np.add(np.sum(np.multiply(keypoints, H[1, :2]), axis=1), H[1, 2])
+        warped_col2 = np.add(np.sum(np.multiply(keypoints, H[2, :2]), axis=1), H[2, 2])
+        warped_col0 = np.divide(warped_col0, warped_col2)
+        warped_col1 = np.divide(warped_col1, warped_col2)
+        new_keypoints = np.concatenate([warped_col0[:, None], warped_col1[:, None]],
+                                       axis=1)
+        return new_keypoints
+
+    def filter_keypoints(points, shape):
+        """ Keep only the points whose coordinates are
+        inside the dimensions of shape. """
+        mask = (points[:, 0] >= 0) & (points[:, 0] < shape[1]) &\
+               (points[:, 1] >= 0) & (points[:, 1] < shape[0])
+        return points[mask, :]
+
+    paths = get_paths(exper_name)
+    repeatability = []
+    for path in paths:
+        data = np.load(path)
+        shape = data['prob'].shape
+
+        # Filter out predictions
+        keypoints = np.where(data['prob'] > prob_thresh)
+        keypoints = np.stack([keypoints[0], keypoints[1]], axis=-1)
+        warped_keypoints = np.where(data['warped_prob'] > prob_thresh)
+        warped_keypoints = np.stack([warped_keypoints[0], warped_keypoints[1]], axis=-1)
+
+        # Warp the original keypoints with the true homography
+        H = data['homography']
+        H = np.linalg.inv(H)
+        true_warped_keypoints = warp_keypoints(keypoints, H)
+        true_warped_keypoints = filter_keypoints(true_warped_keypoints, shape)
+
+        # Compute the repeatability
+        N1 = true_warped_keypoints.shape[0]
+        N2 = warped_keypoints.shape[0]
+        tile1 = np.tile(np.expand_dims(true_warped_keypoints, 1), (1, N2, 1))
+        tile2 = np.tile(warped_keypoints, (N1, 1, 1))
+        # both shapes are now N1 x N2 x 2
+        norm = np.linalg.norm(tile1 - tile2, ord=None, axis=2)
+        count1 = 0
+        count2 = 0
+        if N2 != 0:
+            min1 = np.min(norm, axis=1)
+            count1 = np.sum(min1 <= distance_thresh)
+        if N1 != 0:
+            min2 = np.min(norm, axis=0)
+            count2 = np.sum(min2 <= distance_thresh)
+        if N1 + N2 > 0:
+            repeatability.append((count1 + count2) / (N1 + N2))
+        else:
+            repeatability.append(1)
+
+    return np.mean(repeatability)
