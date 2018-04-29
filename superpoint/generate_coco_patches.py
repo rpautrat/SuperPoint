@@ -1,8 +1,8 @@
 import numpy as np
 import tensorflow as tf
+import cv2 as cv
 import os
 from pathlib import Path
-from PIL import Image
 
 from superpoint.models.utils import sample_homography, flat2mat
 from superpoint.settings import DATA_PATH
@@ -39,9 +39,7 @@ if __name__ == '__main__':
         im, warped_im, homography = sess.run([image, warped_image, H])
 
         # Write the result in files
-        im = Image.fromarray(im)
-        im.save(Path(new_path, "1.jpg"))
-        warped_im = Image.fromarray(warped_im)
-        warped_im.save(Path(new_path, "2.jpg"))
+        cv.imwrite(str(Path(new_path, "1.jpg")), im)
+        cv.imwrite(str(Path(new_path, "2.jpg")), warped_im)
         np.savetxt(Path(new_path, "H_1_2"), homography, '%.5g')
     print("Files generated in " + str(output_dir))

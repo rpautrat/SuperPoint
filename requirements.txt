@@ -6,4 +6,3 @@ tqdm
 pyyaml
 flake8
 jupyter
-pillow
