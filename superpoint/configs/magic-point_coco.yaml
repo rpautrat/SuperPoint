@@ -8,6 +8,19 @@ model:
     batch_size: 50
     eval_batch_size: 50
     learning_rate: 0.001
-    detection_threshold: 0.3
+    detection_threshold: 0.015 # 1/65
+    nms: 4
+    top_k: 300
+    homography_adaptation:
+        num: 1000
+        aggregation: 'sum'
+        filter_counts: 10
+        homographies:
+            translation: true
+            rotation: true
+            scaling: true
+            perspective: true
+            scaling_amplitude: 0.1
+            perspective_amplitude: 0.05
 train_iter: 100000
 eval_iter: 50

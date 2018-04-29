@@ -9,6 +9,7 @@ import shutil
 
 from .base_dataset import BaseDataset
 from superpoint.datasets import synthetic_dataset
+from superpoint.datasets.utils import augmentation as daug
 from superpoint.settings import DATA_PATH
 
 
@@ -19,6 +20,7 @@ class SyntheticShapes(BaseDataset):
             'test_size': -1,
             'on-the-fly': False,
             'cache_in_memory': False,
+            'suffix': None,
             'generation': {
                 'split_sizes': {'training': 5000, 'validation': 200, 'test': 500},
                 'image_size': [960, 1280],
@@ -33,6 +35,14 @@ class SyntheticShapes(BaseDataset):
                 'resize': [240, 320],
                 'blur_size': 11,
             },
+            'augmentation': {
+                'enable': False,
+                'primitives': 'all',
+                'params': {
+                    'additive_gaussian_noise': {'std': [3, 5]},
+                    # 'motion_blur': {'speed': 3, 'blur': 3}
+                }
+            }
     }
     primitives = [
             'draw_lines',
@@ -87,13 +97,22 @@ class SyntheticShapes(BaseDataset):
         tf.logging.info('Tarfile dumped to {}.'.format(tar_path))
 
     def _init_dataset(self, **config):
+        # Parse synthetic primitives
         primitives = self.parse_primitives(config['primitives'])
         assert set(primitives) <= set(self.primitives)
+
+        # Parse augmentation primitives
+        augmentations = config['augmentation']['primitives']
+        augmentations = daug.augmentations if augmentations == 'all' else augmentations
+        assert set(augmentations) <= set(daug.augmentations)
+        config['augmentation']['primitives'] = augmentations + ['dummy']
 
         if config['on-the-fly']:
             return None
 
-        basepath = Path(DATA_PATH, 'synthetic_shapes')
+        basepath = Path(
+                DATA_PATH, 'synthetic_shapes' +
+                ('_{}'.format(config['suffix']) if config['suffix'] is not None else ''))
         basepath.mkdir(parents=True, exist_ok=True)
 
         splits = {s: {'images': [], 'points': []}
@@ -142,6 +161,7 @@ class SyntheticShapes(BaseDataset):
             image = tf.image.decode_png(image, channels=1)
             return tf.cast(image, tf.float32)
 
+        # Python function
         def _read_points(filename):
             return np.load(filename.decode('utf-8')).astype(np.float32)
 
@@ -176,6 +196,14 @@ class SyntheticShapes(BaseDataset):
                     tf.shape(image)[:2])
             return image, kmap
 
+        # Python function
+        def _augmentation(image, points):
+            primitive = np.random.choice(config['augmentation']['primitives'])
+            image, points = getattr(daug, primitive)(
+                    image[:, :, 0], points,
+                    **config['augmentation']['params'].get(primitive, {}))
+            return image[..., np.newaxis].astype(np.float32), points.astype(np.float32)
+
         if config['on-the-fly']:
             data = tf.data.Dataset.from_generator(
                     _gen_shape, (tf.float32, tf.float32),
@@ -183,13 +211,19 @@ class SyntheticShapes(BaseDataset):
                      tf.TensorShape([None, 2])))
             data = data.map(_downsample)
         else:
-            # Initialize filenames with file names
+            # Initialize dataset with file names
             data = tf.data.Dataset.from_tensor_slices(
                     (filenames[split_name]['images'], filenames[split_name]['points']))
             # Read image and point coordinates
             data = data.map(
                     lambda image, points:
                     (_read_image(image), tf.py_func(_read_points, [points], tf.float32)))
+            data = data.map(lambda image, points: (image, tf.reshape(points, [-1, 2])))
+
+        if split_name == 'training' and config['augmentation']['enable']:
+            data = data.map(
+                    lambda image, points: tuple(tf.py_func(
+                        _augmentation, [image, points], [tf.float32, tf.float32])))
             data = data.map(lambda image, points: (image, tf.reshape(points, [-1, 2])))
 
         # Convert point coordinates to a dense keypoint map
