@@ -2,6 +2,8 @@ import numpy as np
 import tensorflow as tf
 import cv2 as cv
 import os
+import argparse
+import yaml
 from pathlib import Path
 
 from superpoint.models.utils import sample_homography, flat2mat
@@ -13,6 +15,14 @@ seed = None
 
 if __name__ == '__main__':
     tf.set_random_seed(seed)
+
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--config', type=str, default=None)
+    args = parser.parse_args()
+    if args.config:
+        with open(args.config, 'r') as f:
+            config = yaml.load(f)
+
     base_path = Path(DATA_PATH, 'COCO/val2014/')
     image_paths = list(base_path.iterdir())
     output_dir = Path(DATA_PATH, 'COCO/patches/')
@@ -31,7 +41,10 @@ if __name__ == '__main__':
         image = tf.image.decode_png(image, channels=3)
 
         # Warp the image
-        H = sample_homography(tf.shape(image)[:2])
+        if args.config:
+            H = sample_homography(tf.shape(image)[:2], **config['homographies'])
+        else:
+            H = sample_homography(tf.shape(image)[:2])
         warped_image = tf.contrib.image.transform(image, H, interpolation="BILINEAR")
         H = flat2mat(H)[0, :, :]
 
