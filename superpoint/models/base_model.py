@@ -6,6 +6,8 @@ from tqdm import tqdm
 import os.path as osp
 import itertools
 
+from superpoint.utils.tools import dict_update
+
 
 class Mode:
     TRAIN = 'train'
@@ -105,9 +107,9 @@ class BaseModel(metaclass=ABCMeta):
         self.trainable = getattr(self, 'trainable', True)
 
         # Update config
-        self.config = self._default_config
-        self.config.update(getattr(self, 'default_config', {}))
-        self.config.update(config)
+        self.config = dict_update(self._default_config,
+                                  getattr(self, 'default_config', {}))
+        self.config = dict_update(self.config, config)
 
         required = self.required_baseconfig + getattr(self, 'required_config_keys', [])
         for r in required:
@@ -273,7 +275,7 @@ class BaseModel(metaclass=ABCMeta):
         assert 'training' in self.datasets, 'Training dataset is required.'
         if output_dir is not None:
             train_writer = tf.summary.FileWriter(output_dir)
-        if not getattr(self, 'saver', False):
+        if not hasattr(self, 'saver'):
             with tf.device('/cpu:0'):
                 self.saver = tf.train.Saver(save_relative_paths=True)
         if not self.graph.finalized:
