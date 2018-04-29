@@ -1,5 +1,5 @@
 data:
-    name: 'hpatches'
+    name: 'patches_dataset'
     primitives: 'all'
     cache_in_memory: false
     validation_size: 100

@@ -7,7 +7,7 @@ from superpoint.models.utils import sample_homography
 from superpoint.settings import DATA_PATH
 
 
-class Hpatches(BaseDataset):
+class PatchesDataset(BaseDataset):
     default_config = {
         'labels': None,
         'cache_in_memory': False,
