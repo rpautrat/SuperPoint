@@ -8,5 +8,7 @@ model:
     method: 'harris'  # 'shi' 'fast'
     batch_size: 50  # unused
     learning_rate: 0.001  # unused
+    nms: 4
+    top_k: 300
 eval_iter: 500
 seed: 1

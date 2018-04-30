@@ -52,6 +52,8 @@ if __name__ == '__main__':
         im, warped_im, homography = sess.run([image, warped_image, H])
 
         # Write the result in files
+        im = im[..., ::-1]  # BGR to RGB
+        warped_im = warped_im[..., ::-1]  # BGR to RGB
         cv.imwrite(str(Path(new_path, "1.jpg")), im)
         cv.imwrite(str(Path(new_path, "2.jpg")), warped_im)
         np.savetxt(Path(new_path, "H_1_2"), homography, '%.5g')

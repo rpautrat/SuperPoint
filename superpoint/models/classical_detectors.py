@@ -3,6 +3,7 @@ import numpy as np
 import cv2
 
 from .base_model import BaseModel
+from .utils import box_nms
 
 
 def classical_detector(im, **config):
@@ -35,6 +36,8 @@ class ClassicalDetectors(BaseModel):
     default_config = {
             'method': 'harris',  # 'shi', 'fast'
             'threshold': 0.5,
+            'nms': 4,
+            'top_k': 300,
     }
     trainable = False
 
@@ -43,6 +46,9 @@ class ClassicalDetectors(BaseModel):
         with tf.device('/cpu:0'):
             prob = tf.map_fn(lambda i: tf.py_func(
                 lambda x: classical_detector(x, **config), [i], tf.float32), im)
+            if config['nms']:
+                prob = tf.map_fn(lambda p: box_nms(p, config['nms'],
+                                                   keep_top_k=config['top_k']), prob)
         pred = tf.cast(tf.greater_equal(prob, config['threshold']), tf.int32)
         return {'prob': prob, 'pred': pred}
 
