@@ -8,10 +8,19 @@ model:
     batch_size: 32
     eval_batch_size: 32
     learning_rate: 0.001
-    detection_threshold: 0.4
     lambda_d: 250
     positive_margin: 1
     negative_margin: 0.2
     lambda_loss: 0.0001
+    detection_threshold: 0.015 # 1/65
+    nms: 4
+    top_k: 300
+    homographies:
+        translation: true
+        rotation: true
+        scaling: true
+        perspective: true
+        scaling_amplitude: 0.1
+        perspective_amplitude: 0.05
 train_iter: 100000
 eval_iter: 50

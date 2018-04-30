@@ -4,7 +4,8 @@ import numpy as np
 from .base_model import BaseModel, Mode
 from .backbones.vgg import vgg_backbone
 from .utils import (detector_head, descriptor_head, sample_homography,
-                    warp_keypoints_to_list, warp_keypoints_to_map, tf_repeat)
+                    warp_keypoints_to_list, warp_keypoints_to_map,
+                    tf_repeat, box_nms)
 
 
 class SuperPoint(BaseModel):
@@ -23,6 +24,14 @@ class SuperPoint(BaseModel):
             'positive_margin': 1,
             'negative_margin': 0.2,
             'lambda_loss': 0.0001,
+            'nms': 0,
+            'top_k': 0,
+            'homographies': {'translation': True,
+                             'rotation': True,
+                             'scaling': True,
+                             'perspective': True,
+                             'scaling_amplitude': 0.1,
+                             'perspective_amplitude': 0.05}
     }
 
     # TODO: add homography adaptation for pred, and evaluation ?
@@ -35,8 +44,9 @@ class SuperPoint(BaseModel):
 
         with tf.device('/cpu:0'):
             elems = tf.tile(tf.expand_dims(shape, 0), [batch_size, 1])
-            H = tf.reshape(tf.map_fn(sample_homography, elems, dtype=tf.float32),
-                           [batch_size, 8])
+            H = tf.map_fn(lambda s: sample_homography(s, **config['homographies']),
+                                     elems, dtype=tf.float32)
+            H = tf.reshape(H, [batch_size, 8])
         warped_im = tf.contrib.image.transform(im, H, interpolation="BILINEAR")
         if config['data_format'] == 'channels_first':
             im = tf.transpose(im, [0, 3, 1, 2])
@@ -49,6 +59,23 @@ class SuperPoint(BaseModel):
         warped_features = vgg_backbone(warped_im, **config)
         warped_keypoints = detector_head(warped_features, **config)
         warped_descriptors = descriptor_head(warped_features, **config)
+
+        prob = keypoints['prob']
+        if config['nms']:
+            prob = tf.map_fn(lambda p: box_nms(p, config['nms'],
+                                               keep_top_k=config['top_k']), prob)
+            keypoints['prob_nms'] = prob
+        pred = tf.to_int32(tf.greater_equal(prob, config['detection_threshold']))
+        keypoints['pred'] = pred
+
+        prob = warped_keypoints['prob']
+        if config['nms']:
+            prob = tf.map_fn(lambda p: box_nms(p, config['nms'],
+                                               keep_top_k=config['top_k']),
+                             warped_keypoints['prob'])
+            warped_keypoints['prob_nms'] = prob
+        pred = tf.to_int32(tf.greater_equal(prob, config['detection_threshold']))
+        warped_keypoints['pred'] = pred
 
         outputs = {'keypoints': keypoints,
                    'descriptors': descriptors,

@@ -6,6 +6,21 @@ from .backbones.vgg import vgg_block
 from superpoint.utils.tools import dict_update
 
 
+homography_adaptation_default_config = {
+        'num': 1,
+        'aggregation': 'sum',
+        'homographies': {
+            'translation': True,
+            'rotation': True,
+            'scaling': True,
+            'perspective': True,
+            'scaling_amplitude': 0.1,
+            'perspective_amplitude': 0.05,
+        },
+        'filter_counts': 0
+}
+
+
 def detector_head(inputs, **config):
     params_conv = {'padding': 'SAME', 'data_format': config['data_format'],
                    'activation': tf.nn.relu, 'batch_normalization': True,
@@ -25,6 +40,35 @@ def detector_head(inputs, **config):
         prob = tf.squeeze(prob, axis=cindex)
 
     return {'logits': x, 'prob': prob}
+
+
+def descriptor_head(inputs, **config):
+    params_conv = {'padding': 'SAME', 'data_format': config['data_format'],
+                   'activation': tf.nn.relu, 'batch_normalization': True,
+                   'training': config['training']}
+    cfirst = config['data_format'] == 'channels_first'
+    cindex = 1 if cfirst else -1  # index of the channel
+
+    with tf.variable_scope('descriptor', reuse=tf.AUTO_REUSE):
+        x = vgg_block(inputs, 256, 3, 'conv1', **params_conv)
+        x = vgg_block(inputs, config['descriptor_size'], 1, 'conv2', **params_conv)
+
+        if cindex == -1:
+            with tf.device('/cpu:0'):
+                desc = tf.image.resize_bicubic(x,
+                                               config['grid_size'] *
+                                               tf.shape(x)[1:3])
+        else:  # cindex == 1
+            # resize_bicubic only supports channels last
+            desc = tf.transpose(x, [0, 2, 3, 1])
+            with tf.device('/cpu:0'):
+                desc = tf.image.resize_bicubic(x,
+                                               config['grid_size'] *
+                                               tf.shape(desc)[1:3])
+            desc = tf.transpose(desc, [0, 3, 1, 2])
+        desc = tf.nn.l2_normalize(desc, cindex)
+
+    return {'logits': x, 'descriptor': desc}
 
 
 def spatial_nms(prob, size):
@@ -73,50 +117,6 @@ def box_nms(prob, size, iou=0.1, min_prob=0.01, keep_top_k=0):
             pts = tf.gather(pts, indices)
         prob = tf.scatter_nd(tf.to_int32(pts), scores, tf.shape(prob))
     return prob
-
-
-homography_adaptation_default_config = {
-        'num': 1,
-        'aggregation': 'sum',
-        'homographies': {
-            'translation': True,
-            'rotation': True,
-            'scaling': True,
-            'perspective': True,
-            'scaling_amplitude': 0.1,
-            'perspective_amplitude': 0.05,
-        },
-        'filter_counts': 0
-}
-
-
-def descriptor_head(inputs, **config):
-    params_conv = {'padding': 'SAME', 'data_format': config['data_format'],
-                   'activation': tf.nn.relu, 'batch_normalization': True,
-                   'training': config['training']}
-    cfirst = config['data_format'] == 'channels_first'
-    cindex = 1 if cfirst else -1  # index of the channel
-
-    with tf.variable_scope('descriptor', reuse=tf.AUTO_REUSE):
-        x = vgg_block(inputs, 256, 3, 'conv1', **params_conv)
-        x = vgg_block(inputs, config['descriptor_size'], 1, 'conv2', **params_conv)
-
-        if cindex == -1:
-            with tf.device('/cpu:0'):
-                desc = tf.image.resize_bicubic(x,
-                                               config['grid_size'] *
-                                               tf.shape(x)[1:3])
-        else:  # cindex == 1
-            # resize_bicubic only supports channels last
-            desc = tf.transpose(x, [0, 2, 3, 1])
-            with tf.device('/cpu:0'):
-                desc = tf.image.resize_bicubic(x,
-                                               config['grid_size'] *
-                                               tf.shape(desc)[1:3])
-            desc = tf.transpose(desc, [0, 3, 1, 2])
-        desc = tf.nn.l2_normalize(desc, cindex)
-
-    return {'logits': x, 'descriptor': desc}
 
 
 def homography_adaptation(image, net, config):
