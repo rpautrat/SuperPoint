@@ -13,15 +13,31 @@ from superpoint.settings import DATA_PATH
 seed = None
 
 
+def _scale_preserving_resize(image):
+    target_size = tf.convert_to_tensor(config['preprocessing']['resize'])
+    scales = tf.to_float(tf.divide(target_size, tf.shape(image)[:2]))
+    new_size = tf.to_float(tf.shape(image)[:2]) * tf.reduce_max(scales)
+    image = tf.image.resize_images(image, tf.to_int32(new_size),
+                                   method=tf.image.ResizeMethod.BILINEAR)
+    return tf.image.resize_image_with_crop_or_pad(image, target_size[0],
+                                                  target_size[1])
+
+
+def _preprocess(image):
+    image = tf.image.rgb_to_grayscale(image)
+    if config['preprocessing']['resize']:
+        image = _scale_preserving_resize(image)
+    return image
+
+
 if __name__ == '__main__':
     tf.set_random_seed(seed)
 
     parser = argparse.ArgumentParser()
-    parser.add_argument('--config', type=str, default=None)
+    parser.add_argument('config', type=str, default=None)
     args = parser.parse_args()
-    if args.config:
-        with open(args.config, 'r') as f:
-            config = yaml.load(f)
+    with open(args.config, 'r') as f:
+        config = yaml.load(f)
 
     base_path = Path(DATA_PATH, 'COCO/val2014/')
     image_paths = list(base_path.iterdir())
@@ -38,22 +54,20 @@ if __name__ == '__main__':
 
         # Read the image
         image = tf.read_file(str(path))
-        image = tf.image.decode_png(image, channels=3)
+        image = tf.image.decode_jpeg(image, channels=3)
+        image = _preprocess(image)
+        shape = tf.shape(image)[:2]
 
         # Warp the image
-        if args.config:
-            H = sample_homography(tf.shape(image)[:2], **config['homographies'])
-        else:
-            H = sample_homography(tf.shape(image)[:2])
+        H = sample_homography(tf.shape(image)[:2], **config['homographies'])
         warped_image = tf.contrib.image.transform(image, H, interpolation="BILINEAR")
+        warped_image = tf.image.resize_images(warped_image, tf.floordiv(shape, 2))
         H = flat2mat(H)[0, :, :]
 
         # Run
         im, warped_im, homography = sess.run([image, warped_image, H])
 
         # Write the result in files
-        im = im[..., ::-1]  # BGR to RGB
-        warped_im = warped_im[..., ::-1]  # BGR to RGB
         cv.imwrite(str(Path(new_path, "1.jpg")), im)
         cv.imwrite(str(Path(new_path, "2.jpg")), warped_im)
         np.savetxt(Path(new_path, "H_1_2"), homography, '%.5g')

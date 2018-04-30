@@ -1,5 +1,6 @@
 import numpy as np
 import tensorflow as tf
+import cv2
 from pathlib import Path
 
 from .base_dataset import BaseDataset
@@ -42,9 +43,7 @@ class PatchesDataset(BaseDataset):
 
     def _get_data(self, files, split_name, **config):
         def _read_image(path):
-            image = tf.read_file(path)
-            image = tf.image.decode_png(image, channels=3)
-            return image
+            return cv2.imread(path.decode('utf-8'))
 
         def _scale_preserving_resize(image):
             target_size = tf.convert_to_tensor(config['preprocessing']['resize'])
@@ -67,10 +66,12 @@ class PatchesDataset(BaseDataset):
             return {'warped_im': warped_im, 'H': H}
 
         images = tf.data.Dataset.from_tensor_slices(files['image_paths'])
-        images = images.map(_read_image)
+        images = images.map(lambda path: tf.py_func(_read_image, [path], tf.float32))
         images = images.map(_preprocess)
         warped_images = tf.data.Dataset.from_tensor_slices(files['warped_image_paths'])
-        warped_images = warped_images.map(_read_image)
+        warped_images = warped_images.map(lambda path: tf.py_func(_read_image,
+                                                                  [path],
+                                                                  tf.float32))
         warped_images = warped_images.map(_preprocess)
         homographies = tf.data.Dataset.from_tensor_slices(np.array(files['homography']))
 

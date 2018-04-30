@@ -1,4 +1,5 @@
 import numpy as np
+import cv2
 import os
 import argparse
 import yaml
@@ -42,10 +43,12 @@ if __name__ == '__main__':
                 break
             data1 = {'image': data['image']}
             data2 = {'image': data['warped_image']}
-            pred1 = net.predict(data1, keys='*')
-            pred2 = net.predict(data2, keys='*')
-            pred = {'prob': pred1['prob'], 'warped_prob': pred2['prob'],
+            prob1 = net.predict(data1, keys='*')['prob']
+            prob2 = net.predict(data2, keys='*')['prob']
+            cv2.resize(prob2, prob1.shape, prob2)
+            pred = {'prob': prob1, 'warped_prob': prob2,
                     'homography': data['homography']}
+
             if not ('name' in data):
                 pred.update(data)
             filename = data['name'].decode('utf-8') if 'name' in data else str(i)
