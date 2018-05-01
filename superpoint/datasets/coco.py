@@ -3,6 +3,7 @@ import tensorflow as tf
 from pathlib import Path
 
 from .base_dataset import BaseDataset
+from superpoint.datasets.utils import augmentation as daug
 from superpoint.settings import DATA_PATH, EXPER_PATH
 
 
@@ -14,10 +15,24 @@ class Coco(BaseDataset):
         'truncate': None,
         'preprocessing': {
             'resize': [240, 320]
+        },
+        'augmentation': {
+            'enable': False,
+            'primitives': 'all',
+            'params': {},
         }
     }
 
+    def parse_primitives(self, names, all_primitives):
+        p = all_primitives if (names == 'all') \
+                else (names if isinstance(names, list) else [names])
+        assert set(p) <= set(all_primitives)
+        return p
+
     def _init_dataset(self, **config):
+        config['augmentation']['primitives'] = self.parse_primitives(
+                config['augmentation']['primitives'], daug.augmentations)
+
         base_path = Path(DATA_PATH, 'COCO/train2014/')
         image_paths = list(base_path.iterdir())
         if config['truncate']:
@@ -69,6 +84,15 @@ class Coco(BaseDataset):
                     tf.shape(data['image'])[:2])
             return {**data, **{'keypoint_map': kmap}}
 
+        # Python function
+        def _augmentation(image, points):
+            primitive = np.random.choice(config['augmentation']['primitives'])
+            image, points = getattr(daug, primitive)(
+                    image[:, :, 0], np.flip(points, -1),
+                    **config['augmentation']['params'].get(primitive, {}))
+            return (image[..., np.newaxis].astype(np.float32),
+                    np.flip(points, -1).astype(np.float32))
+
         names = tf.data.Dataset.from_tensor_slices(files['names'])
         images = tf.data.Dataset.from_tensor_slices(files['image_paths'])
         images = images.map(_read_image)
@@ -91,6 +115,17 @@ class Coco(BaseDataset):
         if config['cache_in_memory']:
             tf.logging.info('Caching data, fist access will take some time.')
             data = data.cache()
+
+        # Data augmentation
+        if config['augmentation']['enable'] and 'label_paths' in files \
+                and split_name == 'training':
+            augmented = data.map(
+                    lambda d: tuple(tf.py_func(_augmentation,
+                                               [d['image'], d['keypoints']],
+                                               [tf.float32, tf.float32])))
+            augmented = augmented.map(lambda i, k: (i, tf.reshape(k, [-1, 2])))
+            data = tf.data.Dataset.zip((data, augmented)).map(
+                    lambda d, a: {**d, **dict(zip(('image', 'keypoints'), a))})
 
         # Generate the keypoint map
         if 'label_paths' in files:
