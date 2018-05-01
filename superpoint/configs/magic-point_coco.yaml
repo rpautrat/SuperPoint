@@ -12,14 +12,14 @@ data:
             'add_shade',
             'random_brightness',
             'random_contrast',
-            'elastic_transform'],
+            'elastic_transform']
         params:
-            motion_blur: {ksize: 7},
-            additive_gaussian_noise: {std: [3, 5]},
-            additive_speckle_noise: {intensity: 1},
-            random_brightness: {max_change: 50},
-            random_contrast: {max_change: [0.5, 1.7]},
-            add_shade: {transparency: 0.4},
+            motion_blur: {ksize: 7}
+            additive_gaussian_noise: {std: [3, 5]}
+            additive_speckle_noise: {intensity: 1}
+            random_brightness: {max_change: 50}
+            random_contrast: {max_change: [0.5, 1.7]}
+            add_shade: {transparency: 0.4}
             elastic_transform:
                 sigma_params: [0.05, 0.05]
                 alpha_params: [0.5, 0.5]
