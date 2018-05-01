@@ -46,11 +46,12 @@ class ClassicalDetectors(BaseModel):
         with tf.device('/cpu:0'):
             prob = tf.map_fn(lambda i: tf.py_func(
                 lambda x: classical_detector(x, **config), [i], tf.float32), im)
+            prob_nms = prob
             if config['nms']:
-                prob = tf.map_fn(lambda p: box_nms(p, config['nms'],
-                                                   keep_top_k=config['top_k']), prob)
-        pred = tf.cast(tf.greater_equal(prob, config['threshold']), tf.int32)
-        return {'prob': prob, 'pred': pred}
+                prob_nms = tf.map_fn(lambda p: box_nms(p, config['nms'],
+                                                       keep_top_k=config['top_k']), prob)
+        pred = tf.cast(tf.greater_equal(prob_nms, config['threshold']), tf.int32)
+        return {'prob': prob, 'prob_nms': prob_nms, 'pred': pred}
 
     def _loss(self, outputs, inputs, **config):
         raise NotImplementedError

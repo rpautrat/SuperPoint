@@ -55,10 +55,11 @@ class PatchesDataset(BaseDataset):
                                                           target_size[1])
 
         def _preprocess(image):
+            tf.Tensor.set_shape(image, [None, None, 3])
             image = tf.image.rgb_to_grayscale(image)
             if config['preprocessing']['resize']:
                 image = _scale_preserving_resize(image)
-            return image
+            return tf.to_float(image)
 
         def _warp_image(image):
             H = sample_homography(tf.shape(image)[:2])
@@ -66,12 +67,12 @@ class PatchesDataset(BaseDataset):
             return {'warped_im': warped_im, 'H': H}
 
         images = tf.data.Dataset.from_tensor_slices(files['image_paths'])
-        images = images.map(lambda path: tf.py_func(_read_image, [path], tf.float32))
+        images = images.map(lambda path: tf.py_func(_read_image, [path], tf.uint8))
         images = images.map(_preprocess)
         warped_images = tf.data.Dataset.from_tensor_slices(files['warped_image_paths'])
         warped_images = warped_images.map(lambda path: tf.py_func(_read_image,
                                                                   [path],
-                                                                  tf.float32))
+                                                                  tf.uint8))
         warped_images = warped_images.map(_preprocess)
         homographies = tf.data.Dataset.from_tensor_slices(np.array(files['homography']))
 

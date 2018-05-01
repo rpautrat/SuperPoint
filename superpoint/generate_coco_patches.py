@@ -6,7 +6,8 @@ import argparse
 import yaml
 from pathlib import Path
 
-from superpoint.models.utils import sample_homography, flat2mat
+from superpoint.models.utils import (sample_homography, flat2mat,
+                                     invert_homography)
 from superpoint.settings import DATA_PATH
 
 
@@ -62,10 +63,15 @@ if __name__ == '__main__':
         H = sample_homography(tf.shape(image)[:2], **config['homographies'])
         warped_image = tf.contrib.image.transform(image, H, interpolation="BILINEAR")
         warped_image = tf.image.resize_images(warped_image, tf.floordiv(shape, 2))
+        H = invert_homography(H)
         H = flat2mat(H)[0, :, :]
 
         # Run
         im, warped_im, homography = sess.run([image, warped_image, H])
+
+        # Add scaling to adapt to the fact that the patch is
+        # twice as small as the original image
+        homography[2, :] *= 2
 
         # Write the result in files
         cv.imwrite(str(Path(new_path, "1.jpg")), im)

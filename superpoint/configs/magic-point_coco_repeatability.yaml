@@ -3,6 +3,8 @@ data:
     primitives: 'all'
     cache_in_memory: false
     validation_size: 100
+    preprocessing:
+        resize: False
 model:
     name: 'magic_point'
     batch_size: 50

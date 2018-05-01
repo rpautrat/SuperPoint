@@ -153,15 +153,15 @@ def compute_repeatability(exper_name, prob_thresh=0.5, distance_thresh=3):
     def filter_keypoints(points, shape):
         """ Keep only the points whose coordinates are
         inside the dimensions of shape. """
-        mask = (points[:, 0] >= 0) & (points[:, 0] < shape[1]) &\
-               (points[:, 1] >= 0) & (points[:, 1] < shape[0])
+        mask = (points[:, 0] >= 0) & (points[:, 0] < shape[0]) &\
+               (points[:, 1] >= 0) & (points[:, 1] < shape[1])
         return points[mask, :]
 
     paths = get_paths(exper_name)
     repeatability = []
     for path in paths:
         data = np.load(path)
-        shape = data['prob'].shape
+        shape = data['warped_prob'].shape
 
         # Filter out predictions
         keypoints = np.where(data['prob'] > prob_thresh)
@@ -171,8 +171,8 @@ def compute_repeatability(exper_name, prob_thresh=0.5, distance_thresh=3):
 
         # Warp the original keypoints with the true homography
         H = data['homography']
-        H = np.linalg.inv(H)
-        true_warped_keypoints = warp_keypoints(keypoints, H)
+        true_warped_keypoints = warp_keypoints(keypoints[:, [1, 0]], H)
+        true_warped_keypoints[:, [0, 1]] = true_warped_keypoints[:, [1, 0]]
         true_warped_keypoints = filter_keypoints(true_warped_keypoints, shape)
 
         # Compute the repeatability
