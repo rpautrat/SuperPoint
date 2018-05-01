@@ -58,37 +58,42 @@ class Coco(BaseDataset):
                 image = _scale_preserving_resize(image)
             return image
 
+        # Python function
         def _read_points(filename):
             return np.load(filename.decode('utf-8'))['points'].astype(np.int32)
 
-        def _coordinates_to_kmap(image, coordinates, *others):
+        def _add_keypoint_map(data):
+            kp = tf.to_int32(tf.round(data['keypoints']))
             kmap = tf.scatter_nd(
-                    coordinates,
-                    tf.ones([tf.shape(coordinates)[0]], dtype=tf.int32),
-                    tf.shape(image)[:2])
-            return (image, kmap) + others
+                    kp, tf.ones([tf.shape(kp)[0]], dtype=tf.int32),
+                    tf.shape(data['image'])[:2])
+            return {**data, **{'keypoint_map': kmap}}
 
         names = tf.data.Dataset.from_tensor_slices(files['names'])
         images = tf.data.Dataset.from_tensor_slices(files['image_paths'])
         images = images.map(_read_image)
         images = images.map(_preprocess)
+        data = tf.data.Dataset.zip({'image': images, 'name': names})
 
+        # Add keypoints
         if 'label_paths' in files:
-            labels = tf.data.Dataset.from_tensor_slices(files['label_paths'])
-            labels = labels.map(lambda path: tf.py_func(_read_points, [path], tf.int32))
-            labels = labels.map(lambda points: tf.reshape(points, [-1, 2]))
-            data = tf.data.Dataset.zip((images, labels, names))
-            data = data.map(_coordinates_to_kmap)
-            # data = tf.data.Dataset.zip((data, names)
-            data = data.map(lambda image, kmap, name:
-                            {'image': image, 'keypoint_map': kmap, 'name': name})
-        else:
-            data = tf.data.Dataset.zip({'image': images, 'name': names})
+            kp = tf.data.Dataset.from_tensor_slices(files['label_paths'])
+            kp = kp.map(lambda path: tf.py_func(_read_points, [path], tf.int32))
+            kp = kp.map(lambda points: tf.reshape(points, [-1, 2]))
+            data = tf.data.Dataset.zip((data, kp)).map(
+                    lambda d, k: {**d, **{'keypoints': k}})
 
+        # Keep only the first elements for validation
         if split_name == 'validation':
             data = data.take(config['validation_size'])
+
+        # Cache to avoid always reading from disk
         if config['cache_in_memory']:
             tf.logging.info('Caching data, fist access will take some time.')
             data = data.cache()
+
+        # Generate the keypoint map
+        if 'label_paths' in files:
+            data = data.map(_add_keypoint_map)
 
         return data
