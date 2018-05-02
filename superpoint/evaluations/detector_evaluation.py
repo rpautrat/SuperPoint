@@ -196,3 +196,16 @@ def compute_repeatability(exper_name, prob_thresh=0.5, distance_thresh=3):
             repeatability.append(1)
 
     return np.mean(repeatability)
+
+
+def select_k_points(prob, k=200, min_thresh=0.1):
+    """
+    Automatically fix the threshold to compute the true keypoints
+    and keep only k points (or the most points above min_thresh).
+    """
+
+    flat_prob = np.sort(prob, axis=None)
+    thresh = min_thresh
+    if k < flat_prob.shape[0]:
+        thresh = max(flat_prob[-k], min_thresh)
+    return np.where(prob >= thresh)
