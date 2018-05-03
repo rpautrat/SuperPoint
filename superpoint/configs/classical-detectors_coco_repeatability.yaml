@@ -1,6 +1,6 @@
 data:
     name: 'patches_dataset'
-    primitives: 'all'
+    alteration: 'all'
     cache_in_memory: false
     validation_size: 100
     preprocessing:

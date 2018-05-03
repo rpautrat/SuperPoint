@@ -10,7 +10,8 @@ from superpoint.settings import DATA_PATH
 
 class PatchesDataset(BaseDataset):
     default_config = {
-        'labels': None,
+        'dataset': 'hpatches',  # or 'coco'
+        'alteration': 'all',  # 'all', 'i' for illumination or 'v' for viewpoint
         'cache_in_memory': False,
         'validation_size': 100,
         'truncate': None,
@@ -20,17 +21,23 @@ class PatchesDataset(BaseDataset):
     }
 
     def _init_dataset(self, **config):
-        base_path = Path(DATA_PATH, 'COCO/patches/')
+        dataset_folder = 'COCO/patches' if config['dataset'] == 'coco' else 'HPatches'
+        base_path = Path(DATA_PATH, dataset_folder)
         folder_paths = [x for x in base_path.iterdir() if x.is_dir()]
         image_paths = []
         warped_image_paths = []
         homographies = []
+        index_initial = len(str(base_path)) + 1
         for path in folder_paths:
-            object_paths = list(path.iterdir())
-            num_images = (len(object_paths) - 1) // 2
+            if config['alteration'] == 'i' and str(path)[index_initial] != 'i':
+                continue
+            if config['alteration'] == 'v' and str(path)[index_initial] != 'v':
+                continue
+            num_images = 1 if config['dataset'] == 'coco' else 5
+            file_ext = '.ppm' if config['dataset'] == 'hpatches' else '.jpg'
             for i in range(2, 2 + num_images):
-                image_paths.append(str(Path(path, "1.jpg")))
-                warped_image_paths.append(str(Path(path, str(i) + ".jpg")))
+                image_paths.append(str(Path(path, "1" + file_ext)))
+                warped_image_paths.append(str(Path(path, str(i) + file_ext)))
                 homographies.append(np.loadtxt(str(Path(path, "H_1_" + str(i)))))
         if config['truncate']:
             image_paths = image_paths[:config['truncate']]
