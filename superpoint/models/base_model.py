@@ -216,12 +216,15 @@ class BaseModel(metaclass=ABCMeta):
             self.dataset_iterators = {}
             with tf.device('/cpu:0'):
                 for n, d in self.datasets.items():
+                    output_shapes = d.output_shapes
                     if n == 'training':
                         train_batch = self.config['batch_size']*self.n_gpus
-                        d = d.repeat().batch(train_batch).prefetch(train_batch)
+                        d = d.repeat().padded_batch(
+                                train_batch, output_shapes).prefetch(train_batch)
                         self.dataset_iterators[n] = d.make_one_shot_iterator()
                     else:
-                        d = d.batch(self.config['eval_batch_size']*self.n_gpus)
+                        d = d.padded_batch(self.config['eval_batch_size']*self.n_gpus,
+                                           output_shapes)
                         self.dataset_iterators[n] = d.make_initializable_iterator()
                     output_types = d.output_types
                     output_shapes = d.output_shapes
