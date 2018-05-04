@@ -1,10 +1,11 @@
 data:
     name: 'patches_dataset'
-    alteration: 'all'
+    dataset: 'hpatches'  # 'coco' 'hpatches'
+    alteration: 'i'  # 'all' 'i' 'v'
     cache_in_memory: false
     validation_size: 100
     preprocessing:
-        resize: False
+        resize: [240, 320]  # False for coco
 model:
     name: 'magic_point'
     batch_size: 50
