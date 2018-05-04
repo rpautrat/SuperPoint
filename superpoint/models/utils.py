@@ -90,7 +90,7 @@ homography_adaptation_default_config = {
 }
 
 
-def homography_adaptation(image, net, config):
+def homography_adaptation(image, net, config, approximate_inverse=True):
     """Perfoms homography adaptation.
 
     Inference using multiple random wrapped patches of the same input image for robust
@@ -130,34 +130,40 @@ def homography_adaptation(image, net, config):
         prob = net(input_wrapped)['prob']
         prob = tf.image.resize_images(tf.expand_dims(prob, axis=-1), shape)[..., 0]
 
-        # Select the points to be mapped back to the original image
-        pts = tf.where(tf.greater_equal(prob, 0.01))
-        selected_prob = tf.gather_nd(prob, pts)
+        # In theory, directly inverting the probability map tends to discard many points
+        # with high probability. However experiments show that this is not an issue for
+        # a large number of homographies, and is 3 times faster than an exact inverse.
+        if approximate_inverse:
+            prob_proj = H_transform(prob, H_inv, interpolation='BILINEAR')
+        else:
+            # Select the points to be mapped back to the original image
+            pts = tf.where(tf.greater_equal(prob, 0.01))
+            selected_prob = tf.gather_nd(prob, pts)
 
-        # Compute the projected coordinates
-        pad = tf.ones(tf.stack([tf.shape(pts)[0], tf.constant(1)]))
-        pts_homogeneous = tf.concat([tf.reverse(tf.to_float(pts), axis=[1]), pad], 1)
-        pts_proj = tf.matmul(pts_homogeneous, tf.transpose(flat2mat(H)[0]))
-        pts_proj = pts_proj[:, :2] / tf.expand_dims(pts_proj[:, 2], axis=1)
-        pts_proj = tf.to_int32(tf.round(tf.reverse(pts_proj, axis=[1])))
+            # Compute the projected coordinates
+            pad = tf.ones(tf.stack([tf.shape(pts)[0], tf.constant(1)]))
+            pts_homogeneous = tf.concat([tf.reverse(tf.to_float(pts), axis=[1]), pad], 1)
+            pts_proj = tf.matmul(pts_homogeneous, tf.transpose(flat2mat(H)[0]))
+            pts_proj = pts_proj[:, :2] / tf.expand_dims(pts_proj[:, 2], axis=1)
+            pts_proj = tf.to_int32(tf.round(tf.reverse(pts_proj, axis=[1])))
 
-        # Hack: convert 2D coordinates to 1D indices in order to use tf.unique
-        pts_idx = pts_proj[:, 0] * shape[1] + pts_proj[:, 1]
-        pts_idx_unique, idx = tf.unique(pts_idx)
+            # Hack: convert 2D coordinates to 1D indices in order to use tf.unique
+            pts_idx = pts_proj[:, 0] * shape[1] + pts_proj[:, 1]
+            pts_idx_unique, idx = tf.unique(pts_idx)
 
-        # Keep maximum corresponding probability for each projected point
-        # Hack: tf.segment_max requires sorted indices
-        idx, sort_idx = tf.nn.top_k(idx, k=tf.shape(idx)[0])
-        idx = tf.reverse(idx, axis=[0])
-        sort_idx = tf.reverse(sort_idx, axis=[0])
-        selected_prob = tf.gather(selected_prob, sort_idx)
-        with tf.device('/cpu:0'):
-            unique_prob = tf.segment_max(selected_prob, idx)
+            # Keep maximum corresponding probability for each projected point
+            # Hack: tf.segment_max requires sorted indices
+            idx, sort_idx = tf.nn.top_k(idx, k=tf.shape(idx)[0])
+            idx = tf.reverse(idx, axis=[0])
+            sort_idx = tf.reverse(sort_idx, axis=[0])
+            selected_prob = tf.gather(selected_prob, sort_idx)
+            with tf.device('/cpu:0'):
+                unique_prob = tf.segment_max(selected_prob, idx)
 
-        # Create final probability map
-        pts_proj_unique = tf.stack([tf.floordiv(pts_idx_unique, shape[1]),
-                                    tf.floormod(pts_idx_unique, shape[1])], axis=1)
-        prob_proj = tf.scatter_nd(pts_proj_unique, unique_prob, shape)
+            # Create final probability map
+            pts_proj_unique = tf.stack([tf.floordiv(pts_idx_unique, shape[1]),
+                                        tf.floormod(pts_idx_unique, shape[1])], axis=1)
+            prob_proj = tf.scatter_nd(pts_proj_unique, unique_prob, shape)
 
         probs = tf.concat([probs, tf.expand_dims(prob_proj, 0)], axis=0)
         counts = tf.concat([counts, tf.expand_dims(count, 0)], axis=0)
@@ -250,8 +256,7 @@ def sample_homography(
                 tf.expand_dims(scales, 1), 1) + center
         valid = tf.logical_and(tf.greater_equal(scaled, 0.), tf.less(scaled, 1.))
         valid = tf.where(tf.reduce_all(valid, axis=[1, 2]))
-        with tf.device('/cpu:0'):
-            idx = tf.random_shuffle(valid)[0]
+        idx = valid[tf.random_uniform((), maxval=tf.shape(valid)[0], dtype=tf.int32)]
         pts2 = scaled[idx[0]]
 
     # Random translation
@@ -273,8 +278,7 @@ def sample_homography(
                 rot_mat) + center
         valid = tf.logical_and(tf.greater_equal(rotated, 0.), tf.less(rotated, 1.))
         valid = tf.where(tf.reduce_all(valid, axis=[1, 2]))
-        with tf.device('/cpu:0'):
-            idx = tf.random_shuffle(valid)[0]
+        idx = valid[tf.random_uniform((), maxval=tf.shape(valid)[0], dtype=tf.int32)]
         pts2 = rotated[idx[0]]
 
     # Rescale to actual size
