@@ -1,0 +1,36 @@
+data:
+    name: 'coco'
+    labels: 'outputs/magic-point_synth-120-160_noise-motion_coco_homography-1_num-100_fcnt-4'
+    cache_in_memory: true
+    validation_size: 192
+    augmentations:
+        enable: true
+        primitives: [
+            'additive_gaussian_noise',
+            'motion_blur',
+            'additive_speckle_noise',
+            'add_shade',
+            'random_brightness',
+            'random_contrast',
+            'elastic_transform']
+        params:
+            motion_blur: {ksize: 7}
+            additive_gaussian_noise: {std: [3, 5]}
+            additive_speckle_noise: {intensity: 1}
+            random_brightness: {max_change: 50}
+            random_contrast: {max_change: [0.5, 1.7]}
+            add_shade: {transparency: 0.4}
+            elastic_transform:
+                sigma_params: [0.05, 0.05]
+                alpha_params: [0.5, 0.5]
+                padding: 2
+model:
+    name: 'magic_point'
+    batch_size: 32
+    eval_batch_size: 32
+    learning_rate: 0.001
+    detection_threshold: 0.015 # 1/65
+    nms: 4
+    top_k: 300
+train_iter: 500000
+validation_interval: 1000

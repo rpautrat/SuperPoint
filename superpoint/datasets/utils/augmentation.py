@@ -8,8 +8,8 @@ from scipy.ndimage.filters import gaussian_filter
 augmentations = [
         'additive_gaussian_noise',
         'additive_speckle_noise',
-        'change_brightness',
-        'change_contrast',
+        'random_brightness',
+        'random_contrast',
         'affine_transform',
         'perspective_transform',
         'elastic_transform',
@@ -26,8 +26,8 @@ def dummy(image, keypoints):
 def keep_points_inside(points, size):
     """ Keep only the points whose coordinates are inside the dimensions of
     the image of size 'size' """
-    mask = (points[:, 0] >= 0) & (points[:, 0] < size[1]) &\
-           (points[:, 1] >= 0) & (points[:, 1] < size[0])
+    mask = (points[:, 0] >= 0) & (points[:, 0] <= (size[1]-1)) &\
+           (points[:, 1] >= 0) & (points[:, 1] <= (size[0]-1))
     return points[mask, :]
 
 
@@ -51,16 +51,16 @@ def additive_speckle_noise(img, keypoints, intensity=5):
       intensity: the higher, the more speckles there will be
     """
     noise = np.zeros(img.shape, dtype=np.uint8)
-    cv.randu(noise, 0, 255)
+    cv.randu(noise, 0, 256)
     black = noise < intensity
-    white = noise > 256 - intensity
+    white = noise > 255 - intensity
     noisy_img = img.copy()
     noisy_img[white > 0] = 255
     noisy_img[black > 0] = 0
     return (noisy_img, keypoints)
 
 
-def change_brightness(img, keypoints, random_state=None, max_change=50):
+def random_brightness(img, keypoints, random_state=None, max_change=50):
     """ Change the brightness of img
     Parameters:
       max_change: max amount of brightness added/subtracted to the image
@@ -72,16 +72,16 @@ def change_brightness(img, keypoints, random_state=None, max_change=50):
     return (np.clip(new_img, 0, 255), keypoints)
 
 
-def change_contrast(img, keypoints, random_state=None, max_change=0.5):
+def random_contrast(img, keypoints, random_state=None, max_change=[0.5, 1.5]):
     """ Change the contrast of img
     Parameters:
       max_change: the change in contrast will be between 1-max_change and 1+max_change
     """
     if random_state is None:
         random_state = np.random.RandomState(None)
-    contrast = 1 + max_change * random_state.rand()
-    new_img = img.astype(float) * contrast
-    new_img = np.clip(new_img, 0, 255)
+    contrast = random_state.uniform(*max_change)
+    mean = np.mean(img, axis=(0, 1))
+    new_img = np.clip(mean + (img - mean) * contrast, 0, 255)
     return (new_img.astype(np.uint8), keypoints)
 
 
@@ -344,44 +344,20 @@ def add_shade(img, keypoints, random_state=None, max_nb_ellipses=20,
 
 def motion_blur(img, keypoints, ksize=10):
     mode = np.random.choice(['h', 'v', 'diag_down', 'diag_up'])
-    idx = int((ksize-1)/2)
+    center = int((ksize-1)/2)
     kernel = np.zeros((ksize, ksize))
     if mode == 'h':
-        kernel[idx, :] = 1./ksize
+        kernel[center, :] = 1.
     elif mode == 'v':
-        kernel[:, idx] = 1./ksize
+        kernel[:, center] = 1.
     elif mode == 'diag_down':
-        kernel = np.eye(ksize)/ksize
+        kernel = np.eye(ksize)
     elif mode == 'diag_up':
-        kernel = np.flip(np.eye(ksize), 0)/ksize
+        kernel = np.flip(np.eye(ksize), 0)
+    var = ksize * ksize / 16.
+    grid = np.repeat(np.arange(ksize)[:, np.newaxis], ksize, axis=-1)
+    gaussian = np.exp(-(np.square(grid-center)+np.square(grid.T-center))/(2.*var))
+    kernel *= gaussian
+    kernel /= np.sum(kernel)
     img = cv.filter2D(img.astype(np.uint8), -1, kernel)
     return img, keypoints
-
-
-# def motion_blur(img, keypoints, random_state=None, speed=10, alpha=0.3):
-    # """ Add a motion blur in a random direction
-    # Parameters:
-      # speed: 'speed' of the motion (norm of the translation vector)
-      # alpha: parameter controlling the alpha channel
-    # """
-    # if random_state is None:
-        # random_state = np.random.RandomState(None)
-
-    # # Prepare the translation
-    # angle = random_state.rand() * 2 * math.pi  # direction of the motion
-    # trans_x = speed * math.cos(angle)
-    # trans_y = speed * math.sin(angle)
-    # trans_matrix = np.array([[1, 0, trans_x], [0, 1, trans_y]])
-
-    # # Warp and superimpose the original and moved images
-    # moved_img = cv.warpAffine(img, trans_matrix, img.shape[::-1])
-    # mask = np.where(moved_img == 0)
-    # moved_img[mask] = img[mask]
-    # moved_img = alpha * moved_img + (1 - alpha) * img
-    # # cv.GaussianBlur(moved_img, (9, 9), 0, moved_img)
-    # moved_img = np.clip(moved_img, 0, 255).astype(np.uint8)
-
-    # # Update the keypoints
-    # new_keypoints = keypoints + alpha * np.array([trans_x, trans_y])
-    # new_keypoints = keep_points_inside(new_keypoints, img.shape)
-    # return (moved_img, new_keypoints)

@@ -44,7 +44,7 @@ class SyntheticShapes(BaseDataset):
                 }
             }
     }
-    primitives = [
+    drawing_primitives = [
             'draw_lines',
             'draw_polygon',
             'draw_multiple_polygons',
@@ -56,9 +56,11 @@ class SyntheticShapes(BaseDataset):
             'gaussian_noise'
     ]
 
-    def parse_primitives(self, primitives):
-        return self.primitives if (primitives == 'all') else \
-                (primitives if isinstance(primitives, list) else [primitives])
+    def parse_primitives(self, names, all_primitives):
+        p = all_primitives if (names == 'all') \
+                else (names if isinstance(names, list) else [names])
+        assert set(p) <= set(all_primitives)
+        return p
 
     def dump_primitive_data(self, primitive, tar_path, config):
         temp_dir = Path(os.environ['TMPDIR'], primitive)
@@ -97,14 +99,12 @@ class SyntheticShapes(BaseDataset):
         tf.logging.info('Tarfile dumped to {}.'.format(tar_path))
 
     def _init_dataset(self, **config):
-        # Parse synthetic primitives
-        primitives = self.parse_primitives(config['primitives'])
-        assert set(primitives) <= set(self.primitives)
+        # Parse drawing primitives
+        primitives = self.parse_primitives(config['primitives'], self.drawing_primitives)
 
         # Parse augmentation primitives
-        augmentations = config['augmentation']['primitives']
-        augmentations = daug.augmentations if augmentations == 'all' else augmentations
-        assert set(augmentations) <= set(daug.augmentations)
+        augmentations = self.parse_primitives(
+                config['augmentation']['primitives'], daug.augmentations)
         config['augmentation']['primitives'] = augmentations + ['dummy']
 
         if config['on-the-fly']:
@@ -145,7 +145,8 @@ class SyntheticShapes(BaseDataset):
     def _get_data(self, filenames, split_name, **config):
 
         def _gen_shape():
-            primitives = self.parse_primitives(config['primitives'])
+            primitives = self.parse_primitives(
+                    config['primitives'], self.drawing_primitives)
             while True:
                 primitive = np.random.choice(primitives)
                 image = synthetic_dataset.generate_background(
@@ -220,6 +221,15 @@ class SyntheticShapes(BaseDataset):
                     (_read_image(image), tf.py_func(_read_points, [points], tf.float32)))
             data = data.map(lambda image, points: (image, tf.reshape(points, [-1, 2])))
 
+        if split_name == 'validation':
+            data = data.take(config['validation_size'])
+        elif split_name == 'test':
+            data = data.take(config['test_size'])
+
+        if config['cache_in_memory'] and not config['on-the-fly']:
+            tf.logging.info('Caching data, fist access will take some time.')
+            data = data.cache()
+
         if split_name == 'training' and config['augmentation']['enable']:
             data = data.map(
                     lambda image, points: tuple(tf.py_func(
@@ -229,14 +239,5 @@ class SyntheticShapes(BaseDataset):
         # Convert point coordinates to a dense keypoint map
         data = data.map(_coordinates_to_kmap)
         data = data.map(lambda image, kmap: {'image': image, 'keypoint_map': kmap})
-
-        if split_name == 'validation':
-            data = data.take(config['validation_size'])
-        elif split_name == 'test':
-            data = data.take(config['test_size'])
-
-        if config['cache_in_memory'] and not config['on-the-fly']:
-            tf.logging.info('Caching data, fist access will take some time.')
-            data = data.cache()
 
         return data
