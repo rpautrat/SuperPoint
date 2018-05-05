@@ -13,5 +13,5 @@ model:
     learning_rate: 0.001  # unused
     nms: 4
     top_k: 300
-eval_iter: 500
+eval_iter: 600
 seed: 1

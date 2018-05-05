@@ -26,5 +26,5 @@ model:
             scaling_amplitude: 0.1
             perspective_amplitude: 0.05
 train_iter: 100000
-eval_iter: 500
+eval_iter: 600
 seed: 1

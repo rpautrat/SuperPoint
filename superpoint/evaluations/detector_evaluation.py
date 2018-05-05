@@ -157,20 +157,30 @@ def compute_repeatability(exper_name, prob_thresh=0.5, distance_thresh=3):
                (points[:, 1] >= 0) & (points[:, 1] < shape[1])
         return points[mask, :]
 
+    def keep_true_keypoints(points, H, shape):
+        """ Keep only the points whose warped coordinates by H
+        are still inside shape. """
+        warped_points = warp_keypoints(points[:, [1, 0]], H)
+        warped_points[:, [0, 1]] = warped_points[:, [1, 0]]
+        mask = (warped_points[:, 0] >= 0) & (warped_points[:, 0] < shape[0]) &\
+               (warped_points[:, 1] >= 0) & (warped_points[:, 1] < shape[1])
+        return points[mask, :]
+
     paths = get_paths(exper_name)
     repeatability = []
     for path in paths:
         data = np.load(path)
         shape = data['warped_prob'].shape
+        H = data['homography']
 
         # Filter out predictions
         keypoints = np.where(data['prob'] > prob_thresh)
         keypoints = np.stack([keypoints[0], keypoints[1]], axis=-1)
         warped_keypoints = np.where(data['warped_prob'] > prob_thresh)
         warped_keypoints = np.stack([warped_keypoints[0], warped_keypoints[1]], axis=-1)
+        warped_keypoints = keep_true_keypoints(warped_keypoints, H, data['prob'].shape)
 
         # Warp the original keypoints with the true homography
-        H = data['homography']
         true_warped_keypoints = warp_keypoints(keypoints[:, [1, 0]], H)
         true_warped_keypoints[:, [0, 1]] = true_warped_keypoints[:, [1, 0]]
         true_warped_keypoints = filter_keypoints(true_warped_keypoints, shape)
