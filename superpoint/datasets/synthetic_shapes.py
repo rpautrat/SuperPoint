@@ -38,10 +38,7 @@ class SyntheticShapes(BaseDataset):
             'augmentation': {
                 'enable': False,
                 'primitives': 'all',
-                'params': {
-                    'additive_gaussian_noise': {'std': [3, 5]},
-                    # 'motion_blur': {'speed': 3, 'blur': 3}
-                }
+                'params': {}
             }
     }
     drawing_primitives = [
