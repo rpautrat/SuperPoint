@@ -5,8 +5,8 @@ data:
     validation_size: 100
 model:
     name: 'super_point'
-    batch_size: 32
-    eval_batch_size: 32
+    batch_size: 10
+    eval_batch_size: 10
     learning_rate: 0.001
     lambda_d: 250
     positive_margin: 1

@@ -34,7 +34,6 @@ class SuperPoint(BaseModel):
                              'perspective_amplitude': 0.05}
     }
 
-    # TODO: add homography adaptation for pred, and evaluation ?
     def _model(self, inputs, mode, **config):
         config['training'] = (mode == Mode.TRAIN)
 
@@ -45,7 +44,7 @@ class SuperPoint(BaseModel):
         with tf.device('/cpu:0'):
             elems = tf.tile(tf.expand_dims(shape, 0), [batch_size, 1])
             H = tf.map_fn(lambda s: sample_homography(s, **config['homographies']),
-                                     elems, dtype=tf.float32)
+                          elems, dtype=tf.float32)
             H = tf.reshape(H, [batch_size, 8])
         warped_im = tf.contrib.image.transform(im, H, interpolation="BILINEAR")
         if config['data_format'] == 'channels_first':
@@ -117,7 +116,7 @@ class SuperPoint(BaseModel):
 
         return loss
 
-    def _detector_loss(self, keypoint_map_labels, keypoints_logits, **config):
+    def _detector_loss(self, keypoint_map_labels, logits, **config):
         labels = tf.cast(tf.expand_dims(keypoint_map_labels, axis=3), tf.float32)
         labels = tf.space_to_depth(labels, config['grid_size'], data_format='NHWC')
         shape = tf.shape(labels)
@@ -126,8 +125,9 @@ class SuperPoint(BaseModel):
         labels = tf.argmax(labels, axis=3)
 
         # Apply the cross entropy
-        cross_entropy = tf.losses.sparse_softmax_cross_entropy(labels=labels,
-                                                               logits=keypoints_logits)
+        with tf.device('/cpu:0'):
+            cross_entropy = tf.losses.sparse_softmax_cross_entropy(labels=labels,
+                                                                   logits=logits)
         return tf.reduce_mean(cross_entropy)
 
     def _descriptors_loss(self, descriptors, warped_descriptors, H, **config):
@@ -150,10 +150,9 @@ class SuperPoint(BaseModel):
                             [batch_size, 1, 1])  # shape = (n_batches, H, W)
 
         # Compute the position of the warped center pixels
-        with tf.device('/cpu:0'):
-            warped_coord_cells = tf.map_fn(warp_keypoints_to_list,
-                                           (map_cells, H),
-                                           dtype=tf.float32)
+        warped_coord_cells = tf.map_fn(warp_keypoints_to_list,
+                                       (map_cells, H),
+                                       dtype=tf.float32)
         # shape = (n_batches x Hc x Wc, 2)
 
         # Reshape the tensors
@@ -194,7 +193,6 @@ class SuperPoint(BaseModel):
                               tf.maximum(zeros, m_pos - dot_product_desc)
                               + (ones - s) * tf.maximum(zeros, dot_product_desc - m_neg))
 
-    # TODO: add involved corner detector metrics
     def _metrics(self, outputs, inputs, **config):
         pred = outputs['keypoints']['pred']
         labels = inputs['keypoint_map']
