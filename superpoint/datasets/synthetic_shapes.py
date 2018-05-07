@@ -38,10 +38,7 @@ class SyntheticShapes(BaseDataset):
             'augmentation': {
                 'enable': False,
                 'primitives': 'all',
-                'params': {
-                    'additive_gaussian_noise': {'std': [3, 5]},
-                    # 'motion_blur': {'speed': 3, 'blur': 3}
-                }
+                'params': {}
             }
     }
     drawing_primitives = [
@@ -168,14 +165,14 @@ class SyntheticShapes(BaseDataset):
 
         def _downsample(image, coordinates):
             with tf.name_scope('gaussian_blur'):
-                kernel = cv2.getGaussianKernel(config['preprocessing']['blur_size'], 0)
-                kernel = kernel[:, 0]
+                k_size = config['preprocessing']['blur_size']
+                kernel = cv2.getGaussianKernel(k_size, 0)[:, 0]
                 kernel = np.outer(kernel, kernel).astype(np.float32)
-                kernel = tf.convert_to_tensor(kernel)
-                kernel = tf.expand_dims(tf.expand_dims(kernel, axis=-1), axis=-1)
+                kernel = tf.reshape(tf.convert_to_tensor(kernel), [k_size]*2+[1, 1])
+                pad_size = int(k_size/2)
+                image = tf.pad(image, [[pad_size]*2, [pad_size]*2, [0, 0]], 'REFLECT')
                 image = tf.expand_dims(image, axis=0)  # add batch dim
-                image = tf.nn.depthwise_conv2d(image, kernel, [1, 1, 1, 1], 'SAME')
-                image = image[0]  # remove batch dim
+                image = tf.nn.depthwise_conv2d(image, kernel, [1, 1, 1, 1], 'VALID')[0]
 
             ratio = tf.divide(tf.convert_to_tensor(config['preprocessing']['resize']),
                               tf.shape(image)[0:2])
