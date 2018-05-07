@@ -79,8 +79,8 @@ def generate_background(size=(960, 1280), nb_blobs=100, min_rad_ratio=0.01,
     return img
 
 
-def generate_custom_background(size, background_color, nb_blobs=5000,
-                               kernel_boundaries=(20, 80)):
+def generate_custom_background(size, background_color, nb_blobs=3000,
+                               kernel_boundaries=(50, 100)):
     """ Generate a customized background to fill the shapes
     Parameters:
       background_color: average color of the background image
@@ -174,6 +174,7 @@ def draw_polygon(img, max_sides=6):
     rad = max(random_state.rand() * min_dim / 2, min_dim / 10)
     x = random_state.randint(rad, img.shape[1] - rad)  # Center of a circle
     y = random_state.randint(rad, img.shape[0] - rad)
+
     # Sample num_corners points inside the circle
     slices = np.linspace(0, 2 * math.pi, num_corners + 1)
     angles = [slices[i] + random_state.rand() * (slices[i+1] - slices[i])
@@ -181,6 +182,19 @@ def draw_polygon(img, max_sides=6):
     points = np.array([[int(x + max(random_state.rand(), 0.5) * rad * math.cos(a)),
                         int(y + max(random_state.rand(), 0.5) * rad * math.sin(a))]
                        for a in angles])
+
+    # Filter the points that have an angle too flat
+    corner_angles = [angle_between_vectors(points[(i-1) % num_corners, :] -
+                                           points[i, :],
+                                           points[(i+1) % num_corners, :] -
+                                           points[i, :])
+                     for i in range(num_corners)]
+    mask = np.array(corner_angles) < (2 * math.pi / 3)
+    points = points[mask, :]
+    num_corners = points.shape[0]
+    if num_corners < 3:  # not enough corners
+        return draw_polygon(img, max_sides)
+
     corners = points.reshape((-1, 1, 2))
     col = get_random_color(int(np.mean(img)))
     cv.fillPoly(img, [corners], col)
@@ -196,6 +210,13 @@ def overlap(center, rad, centers, rads):
             flag = True
             break
     return flag
+
+
+def angle_between_vectors(v1, v2):
+    """ Compute the angle (in rad) between the two vectors v1 and v2. """
+    v1_u = v1 / np.linalg.norm(v1)
+    v2_u = v2 / np.linalg.norm(v2)
+    return np.arccos(np.clip(np.dot(v1_u, v2_u), -1.0, 1.0))
 
 
 def draw_multiple_polygons(img, max_sides=6, nb_polygons=30, **extra):
@@ -216,6 +237,7 @@ def draw_multiple_polygons(img, max_sides=6, nb_polygons=30, **extra):
         rad = max(random_state.rand() * min_dim / 2, min_dim / 10)
         x = random_state.randint(rad, img.shape[1] - rad)  # Center of a circle
         y = random_state.randint(rad, img.shape[0] - rad)
+
         # Sample num_corners points inside the circle
         slices = np.linspace(0, 2 * math.pi, num_corners + 1)
         angles = [slices[i] + random_state.rand() * (slices[i+1] - slices[i])
@@ -224,6 +246,19 @@ def draw_multiple_polygons(img, max_sides=6, nb_polygons=30, **extra):
                        int(y + max(random_state.rand(), 0.5) * rad * math.sin(a))]
                       for a in angles]
         new_points = np.array(new_points)
+
+        # Filter the points that have an angle too flat
+        corner_angles = [angle_between_vectors(new_points[(i-1) % num_corners, :] -
+                                               new_points[i, :],
+                                               new_points[(i+1) % num_corners, :] -
+                                               new_points[i, :])
+                         for i in range(num_corners)]
+        mask = np.array(corner_angles) < (2 * math.pi / 3)
+        new_points = new_points[mask, :]
+        num_corners = new_points.shape[0]
+        if num_corners < 3:  # not enough corners
+            continue
+
         new_segments = np.zeros((1, 4, num_corners))
         new_segments[:, 0, :] = [new_points[i][0] for i in range(num_corners)]
         new_segments[:, 1, :] = [new_points[i][1] for i in range(num_corners)]
