@@ -46,6 +46,21 @@ if __name__ == '__main__':
     if not output_dir.exists():
         os.makedirs(output_dir)
 
+    # Create the ops to warp an image
+    tf_path = tf.placeholder(tf.string)
+    # Read the image
+    image = tf.read_file(tf_path)
+    image = tf.image.decode_jpeg(image, channels=3)
+    image = _preprocess(image)
+    shape = tf.shape(image)[:2]
+
+    # Warp the image
+    H = sample_homography(tf.shape(image)[:2], **config['homographies'])
+    warped_image = tf.contrib.image.transform(image, H, interpolation="BILINEAR")
+    warped_image = tf.image.resize_images(warped_image, tf.floordiv(shape, 2))
+    H = invert_homography(H)
+    H = flat2mat(H)[0, :, :]
+
     print("Generating patches of Coco val...")
     sess = tf.InteractiveSession()
     for num, path in enumerate(image_paths):
@@ -53,21 +68,9 @@ if __name__ == '__main__':
         if not new_path.exists():
             os.makedirs(new_path)
 
-        # Read the image
-        image = tf.read_file(str(path))
-        image = tf.image.decode_jpeg(image, channels=3)
-        image = _preprocess(image)
-        shape = tf.shape(image)[:2]
-
-        # Warp the image
-        H = sample_homography(tf.shape(image)[:2], **config['homographies'])
-        warped_image = tf.contrib.image.transform(image, H, interpolation="BILINEAR")
-        warped_image = tf.image.resize_images(warped_image, tf.floordiv(shape, 2))
-        H = invert_homography(H)
-        H = flat2mat(H)[0, :, :]
-
         # Run
-        im, warped_im, homography = sess.run([image, warped_image, H])
+        im, warped_im, homography = sess.run([image, warped_image, H],
+                                             feed_dict={tf_path: str(path)})
 
         # Add scaling to adapt to the fact that the patch is
         # twice as small as the original image
