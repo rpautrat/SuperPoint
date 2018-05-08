@@ -27,11 +27,10 @@ class PatchesDataset(BaseDataset):
         image_paths = []
         warped_image_paths = []
         homographies = []
-        index_initial = len(str(base_path)) + 1
         for path in folder_paths:
-            if config['alteration'] == 'i' and str(path)[index_initial] != 'i':
+            if config['alteration'] == 'i' and path.stem[0] != 'i':
                 continue
-            if config['alteration'] == 'v' and str(path)[index_initial] != 'v':
+            if config['alteration'] == 'v' and path.stem[0] != 'v':
                 continue
             num_images = 1 if config['dataset'] == 'coco' else 5
             file_ext = '.ppm' if config['dataset'] == 'hpatches' else '.jpg'

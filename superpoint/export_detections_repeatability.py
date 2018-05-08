@@ -42,8 +42,8 @@ if __name__ == '__main__':
                 break
             data1 = {'image': data['image']}
             data2 = {'image': data['warped_image']}
-            prob1 = net.predict(data1, keys='*')['prob_nms']
-            prob2 = net.predict(data2, keys='*')['prob_nms']
+            prob1 = net.predict(data1, keys='prob_nms')
+            prob2 = net.predict(data2, keys='prob_nms')
             pred = {'prob': prob1, 'warped_prob': prob2,
                     'homography': data['homography']}
 

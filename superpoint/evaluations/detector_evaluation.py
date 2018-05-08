@@ -141,14 +141,11 @@ def compute_repeatability(exper_name, prob_thresh=0.5, distance_thresh=3):
     linking the 2 images.
     """
     def warp_keypoints(keypoints, H):
-        warped_col0 = np.add(np.sum(np.multiply(keypoints, H[0, :2]), axis=1), H[0, 2])
-        warped_col1 = np.add(np.sum(np.multiply(keypoints, H[1, :2]), axis=1), H[1, 2])
-        warped_col2 = np.add(np.sum(np.multiply(keypoints, H[2, :2]), axis=1), H[2, 2])
-        warped_col0 = np.divide(warped_col0, warped_col2)
-        warped_col1 = np.divide(warped_col1, warped_col2)
-        new_keypoints = np.concatenate([warped_col0[:, None], warped_col1[:, None]],
-                                       axis=1)
-        return new_keypoints
+        num_points = keypoints.shape[0]
+        homogeneous_points = np.concatenate([keypoints, np.ones((num_points, 1))],
+                                            axis=1)
+        warped_points = np.dot(homogeneous_points, np.transpose(H))
+        return warped_points[:, :2] / warped_points[:, 2]
 
     def filter_keypoints(points, shape):
         """ Keep only the points whose coordinates are
@@ -189,10 +186,11 @@ def compute_repeatability(exper_name, prob_thresh=0.5, distance_thresh=3):
         # Compute the repeatability
         N1 = true_warped_keypoints.shape[0]
         N2 = warped_keypoints.shape[0]
-        tile1 = np.tile(np.expand_dims(true_warped_keypoints, 1), (1, N2, 1))
-        tile2 = np.tile(warped_keypoints, (N1, 1, 1))
-        # both shapes are now N1 x N2 x 2
-        norm = np.linalg.norm(tile1 - tile2, ord=None, axis=2)
+        true_warped_keypoints = np.expand_dims(true_warped_keypoints, 1)
+        warped_keypoints = np.expand_dims(warped_keypoints, 0)
+        # shapes are broadcasted to N1 x N2 x 2:
+        norm = np.linalg.norm(true_warped_keypoints - warped_keypoints,
+                              ord=None, axis=2)
         count1 = 0
         count2 = 0
         if N2 != 0:
@@ -203,8 +201,6 @@ def compute_repeatability(exper_name, prob_thresh=0.5, distance_thresh=3):
             count2 = np.sum(min2 <= distance_thresh)
         if N1 + N2 > 0:
             repeatability.append((count1 + count2) / (N1 + N2))
-        else:
-            repeatability.append(1)
 
     return np.mean(repeatability)
 
