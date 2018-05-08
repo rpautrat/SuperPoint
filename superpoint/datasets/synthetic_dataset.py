@@ -183,7 +183,12 @@ def draw_polygon(img, max_sides=6):
                         int(y + max(random_state.rand(), 0.5) * rad * math.sin(a))]
                        for a in angles])
 
-    # Filter the points that have an angle too flat
+    # Filter the points that are too close or that have an angle too flat
+    norms = [np.linalg.norm(points[(i-1) % num_corners, :]
+                            - points[i, :]) for i in range(num_corners)]
+    mask = np.array(norms) > 0.01
+    points = points[mask, :]
+    num_corners = points.shape[0]
     corner_angles = [angle_between_vectors(points[(i-1) % num_corners, :] -
                                            points[i, :],
                                            points[(i+1) % num_corners, :] -
@@ -247,7 +252,12 @@ def draw_multiple_polygons(img, max_sides=6, nb_polygons=30, **extra):
                       for a in angles]
         new_points = np.array(new_points)
 
-        # Filter the points that have an angle too flat
+        # Filter the points that are too close or that have an angle too flat
+        norms = [np.linalg.norm(new_points[(i-1) % num_corners, :]
+                                - new_points[i, :]) for i in range(num_corners)]
+        mask = np.array(norms) > 0.01
+        new_points = new_points[mask, :]
+        num_corners = new_points.shape[0]
         corner_angles = [angle_between_vectors(new_points[(i-1) % num_corners, :] -
                                                new_points[i, :],
                                                new_points[(i+1) % num_corners, :] -
