@@ -145,7 +145,7 @@ def compute_repeatability(exper_name, prob_thresh=0.5, distance_thresh=3):
         homogeneous_points = np.concatenate([keypoints, np.ones((num_points, 1))],
                                             axis=1)
         warped_points = np.dot(homogeneous_points, np.transpose(H))
-        return warped_points[:, :2] / warped_points[:, 2]
+        return warped_points[:, :2] / warped_points[:, 2:]
 
     def filter_keypoints(points, shape):
         """ Keep only the points whose coordinates are
