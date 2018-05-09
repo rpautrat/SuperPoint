@@ -26,6 +26,9 @@ def classical_detector(im, **config):
         for c in corners:
             detections[tuple(np.flip(np.int0(c.pt), 0))] = c.response
 
+    elif config['method'] == 'random':
+        detections = np.random.rand(im.shape[0], im.shape[1])
+
     return detections.astype(np.float32)
 
 
@@ -34,7 +37,7 @@ class ClassicalDetectors(BaseModel):
             'image': {'shape': [None, None, None, 1], 'type': tf.float32}
     }
     default_config = {
-            'method': 'harris',  # 'shi', 'fast'
+            'method': 'harris',  # 'shi', 'fast', 'random'
             'threshold': 0.5,
             'nms': 4,
             'top_k': 300,
@@ -48,7 +51,7 @@ class ClassicalDetectors(BaseModel):
                 lambda x: classical_detector(x, **config), [i], tf.float32), im)
             prob_nms = prob
             if config['nms']:
-                prob_nms = tf.map_fn(lambda p: box_nms(p, config['nms'],
+                prob_nms = tf.map_fn(lambda p: box_nms(p, config['nms'], min_prob=0.,
                                                        keep_top_k=config['top_k']), prob)
         pred = tf.cast(tf.greater_equal(prob_nms, config['threshold']), tf.int32)
         return {'prob': prob, 'prob_nms': prob_nms, 'pred': pred}
