@@ -41,12 +41,12 @@ class SuperPoint(BaseModel):
         batch_size = config['batch_size']
         shape = tf.shape(im)[1:3]
 
-        with tf.device('/cpu:0'):
-            elems = tf.tile(tf.expand_dims(shape, 0), [batch_size, 1])
-            H = tf.map_fn(lambda s: sample_homography(s, **config['homographies']),
-                          elems, dtype=tf.float32)
-            H = tf.reshape(H, [batch_size, 8])
+        elems = tf.tile(tf.expand_dims(shape, 0), [batch_size, 1])
+        H = tf.map_fn(lambda s: sample_homography(s, **config['homographies']),
+                      elems, dtype=tf.float32)
+        H = tf.reshape(H, [batch_size, 8])
         warped_im = tf.contrib.image.transform(im, H, interpolation="BILINEAR")
+        warped_im = tf.image.resize_images(warped_im, tf.floordiv(shape, 2))
         if config['data_format'] == 'channels_first':
             im = tf.transpose(im, [0, 3, 1, 2])
             warped_im = tf.transpose(warped_im, [0, 3, 1, 2])
@@ -97,11 +97,16 @@ class SuperPoint(BaseModel):
             descriptors = tf.transpose(descriptors, [0, 2, 3, 1])
             warped_descriptors = tf.transpose(warped_descriptors, [0, 2, 3, 1])
 
+        # Resize the warped data to match the shape of the original data
+        shape = tf.shape(logits)[1:3]
+        warped_logits = tf.image.resize_images(warped_logits, shape)
+        warped_descriptors = tf.image.resize_images(warped_descriptors, shape,
+                                                    tf.image.ResizeMethod.BICUBIC)
+
         # Compute the loss for the keypoints detector
-        with tf.device('/cpu:0'):
-            warped_labels = tf.map_fn(warp_keypoints_to_map,
-                                      (inputs['keypoint_map'], outputs['homography']),
-                                      dtype=tf.float32)
+        warped_labels = tf.map_fn(warp_keypoints_to_map,
+                                  (inputs['keypoint_map'], outputs['homography']),
+                                  dtype=tf.float32)
         keypoints_loss = self._detector_loss(inputs['keypoint_map'], logits, **config)
         warped_keypoints_loss = self._detector_loss(warped_labels,
                                                     warped_logits,
@@ -125,9 +130,8 @@ class SuperPoint(BaseModel):
         labels = tf.argmax(labels, axis=3)
 
         # Apply the cross entropy
-        with tf.device('/cpu:0'):
-            cross_entropy = tf.losses.sparse_softmax_cross_entropy(labels=labels,
-                                                                   logits=logits)
+        cross_entropy = tf.losses.sparse_softmax_cross_entropy(labels=labels,
+                                                               logits=logits)
         return tf.reduce_mean(cross_entropy)
 
     def _descriptors_loss(self, descriptors, warped_descriptors, H, **config):
@@ -140,7 +144,7 @@ class SuperPoint(BaseModel):
             + config['grid_size'] // 2
         row_coord_cells = np.repeat(row_coord_cells, Wc).reshape((Hc * Wc, 1))
         col_coord_cells = np.tile(col_coord_cells, Hc).reshape((Hc * Wc, 1))
-        coord_cells = tf.Variable(np.concatenate([row_coord_cells, col_coord_cells],
+        coord_cells = tf.constant(np.concatenate([row_coord_cells, col_coord_cells],
                                                  axis=1),
                                   dtype=tf.int32)  # shape = (Hc x Wc, 2)
         map_cells = tf.scatter_nd(coord_cells,
@@ -153,7 +157,7 @@ class SuperPoint(BaseModel):
         warped_coord_cells = tf.map_fn(warp_keypoints_to_list,
                                        (map_cells, H),
                                        dtype=tf.float32)
-        # shape = (n_batches x Hc x Wc, 2)
+        # shape = (n_batches, Hc x Wc, 2)
 
         # Reshape the tensors
         coord_cells = tf.tile(coord_cells,
