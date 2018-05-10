@@ -16,6 +16,8 @@ homography_adaptation_default_config = {
             'perspective': True,
             'scaling_amplitude': 0.1,
             'perspective_amplitude': 0.05,
+            'patch_ratio': 0.5,
+            'max_angle': pi,
         },
         'filter_counts': 0
 }
@@ -117,21 +119,6 @@ def box_nms(prob, size, iou=0.1, min_prob=0.01, keep_top_k=0):
             pts = tf.gather(pts, indices)
         prob = tf.scatter_nd(tf.to_int32(pts), scores, tf.shape(prob))
     return prob
-
-
-homography_adaptation_default_config = {
-        'num': 1,
-        'aggregation': 'sum',
-        'homographies': {
-            'translation': True,
-            'rotation': True,
-            'scaling': True,
-            'perspective': True,
-            'scaling_amplitude': 0.1,
-            'perspective_amplitude': 0.05,
-        },
-        'filter_counts': 0
-}
 
 
 def homography_adaptation(image, net, config, approximate_inverse=True):
@@ -258,7 +245,8 @@ def homography_adaptation_batch(images, net, config):
 
 def sample_homography(
         shape, perspective=True, scaling=True, rotation=True, translation=True,
-        n_scales=5, n_angles=16, scaling_amplitude=0.1, perspective_amplitude=0.1):
+        n_scales=5, n_angles=16, scaling_amplitude=0.1, perspective_amplitude=0.1,
+        patch_ratio=0.5, max_angle=pi):
     """Sample a random valid homography.
 
     Computes the homography transformation between a random patch in the original image
@@ -284,11 +272,14 @@ def sample_homography(
     # Corners of the output image
     pts1 = tf.stack([[0., 0.], [0., 1.], [1., 1.], [1., 0.]], axis=0)
     # Corners of the input patch
-    pts2 = 0.25 + tf.constant([[0, 0], [0, 0.5], [0.5, 0.5], [0.5, 0]], tf.float32)
+    margin = (1 - patch_ratio) / 2
+    pts2 = margin + tf.constant([[0, 0], [0, patch_ratio],
+                                 [patch_ratio, patch_ratio], [patch_ratio, 0]],
+                                tf.float32)
 
     # Random perspective and affine perturbations
     if perspective:
-        pts2 += tf.truncated_normal([4, 2], 0., min(perspective_amplitude, 0.25)/2)
+        pts2 += tf.truncated_normal([4, 2], 0., min(perspective_amplitude, margin)/2)
 
     # Random scaling
     # sample several scales, check collision with borders, randomly pick a valid one
@@ -313,7 +304,7 @@ def sample_homography(
     # Random rotation
     # sample several rotations, check collision with borders, randomly pick a valid one
     if rotation:
-        angles = tf.lin_space(0., 2*tf.constant(pi), n_angles)
+        angles = tf.lin_space(tf.constant(-max_angle), tf.constant(max_angle), n_angles)
         center = tf.reduce_mean(pts2, axis=0, keepdims=True)
         rot_mat = tf.reshape(tf.stack([tf.cos(angles), -tf.sin(angles), tf.sin(angles),
                                        tf.cos(angles)], axis=1), [-1, 2, 2])
@@ -406,13 +397,13 @@ def warp_keypoints_to_map(packed_arg):
     The inverse is used to be coherent with tf.contrib.image.transform
 
     Arguments:
-        packed_arg: a tuple equal to (keypoints_map, H)
+        packed_arg: a tuple equal to (keypoints_map, H, output_shape)
 
-    Returns: a map of keypoints with of the same format as the original keypoints map.
+    Returns: a map of keypoints of size output_shape.
     """
-    warped_keypoints = tf.to_int32(warp_keypoints_to_list(packed_arg))
+    warped_keypoints = tf.to_int32(warp_keypoints_to_list(packed_arg[:2]))
     n_keypoints = tf.shape(warped_keypoints)[0]
-    shape = tf.shape(packed_arg[0])
+    shape = packed_arg[2]
 
     # Remove points outside the image
     zeros = tf.cast(tf.zeros([n_keypoints]), dtype=tf.bool)
