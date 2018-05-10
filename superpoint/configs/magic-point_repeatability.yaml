@@ -1,7 +1,7 @@
 data:
     name: 'patches_dataset'
     dataset: 'hpatches'  # 'coco' 'hpatches'
-    alteration: 'i'  # 'all' 'i' 'v'
+    alteration: 'v'  # 'all' 'i' 'v'
     cache_in_memory: false
     validation_size: 100
     preprocessing:

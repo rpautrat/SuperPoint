@@ -12,9 +12,9 @@ def classical_detector(im, **config):
 
     elif config['method'] == 'shi':
         detections = np.zeros(im.shape[:2], np.float)
-        thresh = np.linspace(0.0001, 1, 300, endpoint=False)
+        thresh = np.linspace(0.0001, 1, 600, endpoint=False)
         for t in thresh:
-            corners = cv2.goodFeaturesToTrack(im, 300, t, 5)
+            corners = cv2.goodFeaturesToTrack(im, 600, t, 5)
             if corners is not None:
                 corners = corners.astype(np.int)
                 detections[(corners[:, 0, 1], corners[:, 0, 0])] = t
