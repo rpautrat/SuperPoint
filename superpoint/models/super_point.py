@@ -1,5 +1,6 @@
 import tensorflow as tf
 import numpy as np
+from math import pi
 
 from .base_model import BaseModel, Mode
 from .backbones.vgg import vgg_backbone
@@ -31,7 +32,9 @@ class SuperPoint(BaseModel):
                              'scaling': True,
                              'perspective': True,
                              'scaling_amplitude': 0.1,
-                             'perspective_amplitude': 0.05}
+                             'perspective_amplitude': 0.05,
+                             'patch_ratio': 0.75,
+                             'max_angle': pi,}
     }
 
     def _model(self, inputs, mode, **config):
@@ -41,16 +44,18 @@ class SuperPoint(BaseModel):
         batch_size = config['batch_size']
         shape = tf.shape(im)[1:3]
 
+        # Sample random homographies and warp the original image
         elems = tf.tile(tf.expand_dims(shape, 0), [batch_size, 1])
         H = tf.map_fn(lambda s: sample_homography(s, **config['homographies']),
                       elems, dtype=tf.float32)
         H = tf.reshape(H, [batch_size, 8])
         warped_im = tf.contrib.image.transform(im, H, interpolation="BILINEAR")
-        warped_im = tf.image.resize_images(warped_im, tf.floordiv(shape, 2))
+
         if config['data_format'] == 'channels_first':
             im = tf.transpose(im, [0, 3, 1, 2])
             warped_im = tf.transpose(warped_im, [0, 3, 1, 2])
 
+        # Compute the map of keypoints and of descriptors
         features = vgg_backbone(im, **config)
         keypoints = detector_head(features, **config)
         descriptors = descriptor_head(features, **config)
@@ -59,6 +64,7 @@ class SuperPoint(BaseModel):
         warped_keypoints = detector_head(warped_features, **config)
         warped_descriptors = descriptor_head(warped_features, **config)
 
+        # Apply NMS and get the final prediction
         prob = keypoints['prob']
         if config['nms']:
             prob = tf.map_fn(lambda p: box_nms(p, config['nms'],
@@ -96,12 +102,6 @@ class SuperPoint(BaseModel):
             warped_logits = tf.transpose(warped_logits, [0, 2, 3, 1])
             descriptors = tf.transpose(descriptors, [0, 2, 3, 1])
             warped_descriptors = tf.transpose(warped_descriptors, [0, 2, 3, 1])
-
-        # Resize the warped data to match the shape of the original data
-        shape = tf.shape(logits)[1:3]
-        warped_logits = tf.image.resize_images(warped_logits, shape)
-        warped_descriptors = tf.image.resize_images(warped_descriptors, shape,
-                                                    tf.image.ResizeMethod.BICUBIC)
 
         # Compute the loss for the keypoints detector
         warped_labels = tf.map_fn(warp_keypoints_to_map,

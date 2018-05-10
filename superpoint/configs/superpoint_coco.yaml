@@ -22,5 +22,6 @@ model:
         perspective: true
         scaling_amplitude: 0.1
         perspective_amplitude: 0.05
+        patch_ratio: 0.75
 train_iter: 100000
 eval_iter: 50

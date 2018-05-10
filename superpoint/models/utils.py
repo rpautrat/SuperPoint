@@ -157,7 +157,8 @@ def homography_adaptation(image, net, config, approximate_inverse=True):
         count = H_transform(tf.ones(shape), H_inv, interpolation='NEAREST')
 
         # Predict detection probabilities
-        input_wrapped = tf.image.resize_images(wrapped, tf.floordiv(shape, 2))
+        warped_shape = tf.multiply(shape, config['homographies']['patch_ratio'])
+        input_wrapped = tf.image.resize_images(wrapped, warped_shape)
         prob = net(input_wrapped)['prob']
         prob = tf.image.resize_images(tf.expand_dims(prob, axis=-1), shape)[..., 0]
 
@@ -397,13 +398,13 @@ def warp_keypoints_to_map(packed_arg):
     The inverse is used to be coherent with tf.contrib.image.transform
 
     Arguments:
-        packed_arg: a tuple equal to (keypoints_map, H, output_shape)
+        packed_arg: a tuple equal to (keypoints_map, H)
 
-    Returns: a map of keypoints of size output_shape.
+    Returns: a map of keypoints of the same size as the original keypoint_map.
     """
-    warped_keypoints = tf.to_int32(warp_keypoints_to_list(packed_arg[:2]))
+    warped_keypoints = tf.to_int32(warp_keypoints_to_list(packed_arg))
     n_keypoints = tf.shape(warped_keypoints)[0]
-    shape = packed_arg[2]
+    shape = tf.shape(packed_args[0])
 
     # Remove points outside the image
     zeros = tf.cast(tf.zeros([n_keypoints]), dtype=tf.bool)
