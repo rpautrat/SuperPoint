@@ -34,7 +34,7 @@ class SuperPoint(BaseModel):
                              'scaling_amplitude': 0.1,
                              'perspective_amplitude': 0.05,
                              'patch_ratio': 0.75,
-                             'max_angle': pi,}
+                             'max_angle': pi}
     }
 
     def _model(self, inputs, mode, **config):
@@ -147,6 +147,8 @@ class SuperPoint(BaseModel):
         coord_cells = tf.constant(np.concatenate([row_coord_cells, col_coord_cells],
                                                  axis=1),
                                   dtype=tf.int32)  # shape = (Hc x Wc, 2)
+        # coord_cells is now a list of the coordinates of the Hc x Wc center pixels
+        # of the cells 8x8 of the image
         map_cells = tf.scatter_nd(coord_cells,
                                   tf.ones([Hc * Wc], dtype=tf.float32),
                                   full_shape)  # shape = (H, W)
@@ -158,8 +160,16 @@ class SuperPoint(BaseModel):
                                        (map_cells, H),
                                        dtype=tf.float32)
         # shape = (n_batches, Hc x Wc, 2)
+        # warped_coord_cells is now a list of the warped coordinates of all the center
+        # pixels of the cells 8x8 of the image
 
         # Reshape the tensors
+        # The goal is to compute the norm between any of the Hc x Wc points of the
+        # original image and any of the same warped points in the warped image
+        # To achieve this, 2 vectors of size Hc x Hc x Wc x Wc x 2 are built
+        # (one for the original image and one for the warped one)
+        # They should be read as: (index_row_orig, index_row_warped, index_col_orig,
+        # index_col_warped, coordinates)
         coord_cells = tf.tile(coord_cells,
                               [batch_size, 1])  # shape = (n_batches x Hc x Wc, 2)
         coord_cells = tf.reshape(coord_cells, [batch_size, Hc, Wc, 2])
@@ -177,6 +187,9 @@ class SuperPoint(BaseModel):
         zeros = tf.zeros(cell_distances.shape)
         ones = tf.ones(cell_distances.shape)
         s = tf.where(cell_distances <= config['grid_size'], ones, zeros)
+        # s[id_batch, h, w, h', w'] == 1 if the point of coordinates (h, w) warped by H
+        # is at a distance from the point (h', w') less than config['grid_size']
+        # and 0 otherwise
 
         # Compute the dot product matrix between descriptors: d^t * d'
         descriptors = tf_repeat(descriptors,
@@ -189,6 +202,9 @@ class SuperPoint(BaseModel):
         dot_product_desc = tf.reshape(dot_product_desc, [batch_size, Hc, Hc, Wc, Wc])
         dot_product_desc = tf.transpose(dot_product_desc, [0, 1, 3, 2, 4])
         # shape = (n_batches, Hc, Wc, Hc, Wc)
+        # dot_product_desc[id_batch, h, w, h', w'] is the dot product between the
+        # descriptor at position (h, w) in the original descriptors map and the
+        # descriptor at position (h', w') in the warped image
 
         # Compute the loss
         m_pos = config['positive_margin'] * ones

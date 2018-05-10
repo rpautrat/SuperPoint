@@ -404,7 +404,7 @@ def warp_keypoints_to_map(packed_arg):
     """
     warped_keypoints = tf.to_int32(warp_keypoints_to_list(packed_arg))
     n_keypoints = tf.shape(warped_keypoints)[0]
-    shape = tf.shape(packed_args[0])
+    shape = tf.shape(packed_arg[0])
 
     # Remove points outside the image
     zeros = tf.cast(tf.zeros([n_keypoints]), dtype=tf.bool)
