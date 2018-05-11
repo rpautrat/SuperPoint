@@ -26,9 +26,11 @@ class SyntheticShapes(BaseDataset):
                 'image_size': [960, 1280],
                 'random_seed': 0,
                 'params': {
+                    'generate_background': {
+                        'min_kernel_size': 150, 'max_kernel_size': 500,
+                        'min_rad_ratio': 0.02, 'max_rad_ratio': 0.031},
                     'draw_stripes': {'transform_params': (0.1, 0.1)},
-                    'generate_background': {'min_kernel_size': 100},
-                    'draw_multiple_polygons': {'kernel_boundaries': (40, 80)}
+                    'draw_multiple_polygons': {'kernel_boundaries': (50, 100)}
                 },
             },
             'preprocessing': {
