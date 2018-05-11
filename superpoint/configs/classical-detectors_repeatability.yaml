@@ -1,0 +1,17 @@
+data:
+    name: 'patches_dataset'
+    dataset: 'hpatches'  # 'hpatches' 'coco'
+    alteration: 'v'  # 'i' 'v' 'all'
+    cache_in_memory: false
+    validation_size: 100
+    preprocessing:
+        resize: [240, 320]  # False for coco
+model:
+    name: 'classical_detectors'
+    method: 'harris'  # 'shi' 'fast' 'random'
+    batch_size: 50  # unused
+    learning_rate: 0.001  # unused
+    nms: 4
+    top_k: 600
+eval_iter: 600
+seed: 1

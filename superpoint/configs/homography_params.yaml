@@ -1,0 +1,9 @@
+homographies:
+    translation: true
+    rotation: true
+    scaling: true
+    perspective: true
+    scaling_amplitude: 0.1
+    perspective_amplitude: 0.05
+preprocessing:
+    resize: [240, 320]
