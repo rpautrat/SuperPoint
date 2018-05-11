@@ -134,7 +134,8 @@ def compute_loc_error(exper_name, prob_thresh=0.5, distance_thresh=2):
     return np.mean(np.concatenate(error))
 
 
-def compute_repeatability(exper_name, keep_k_points=300, distance_thresh=3):
+def compute_repeatability(exper_name, keep_k_points=300,
+                          distance_thresh=3, verbose=False):
     """
     Compute the repeatability. The experiment must contain in its output the prediction
     on 2 images, an original image and a warped version of it, plus the homography
@@ -172,6 +173,8 @@ def compute_repeatability(exper_name, keep_k_points=300, distance_thresh=3):
 
     paths = get_paths(exper_name)
     repeatability = []
+    N1s = []
+    N2s = []
     for path in paths:
         data = np.load(path)
         shape = data['warped_prob'].shape
@@ -203,6 +206,8 @@ def compute_repeatability(exper_name, keep_k_points=300, distance_thresh=3):
         # Compute the repeatability
         N1 = true_warped_keypoints.shape[0]
         N2 = warped_keypoints.shape[0]
+        N1s.append(N1)
+        N2s.append(N2)
         true_warped_keypoints = np.expand_dims(true_warped_keypoints, 1)
         warped_keypoints = np.expand_dims(warped_keypoints, 0)
         # shapes are broadcasted to N1 x N2 x 2:
@@ -219,4 +224,7 @@ def compute_repeatability(exper_name, keep_k_points=300, distance_thresh=3):
         if N1 + N2 > 0:
             repeatability.append((count1 + count2) / (N1 + N2))
 
+    if verbose:
+        print("Average number of points in the first image: " + str(np.mean(N1s)))
+        print("Average number of points in the second image: " + str(np.mean(N2s)))
     return np.mean(repeatability)
