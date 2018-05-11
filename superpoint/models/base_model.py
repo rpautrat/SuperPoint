@@ -193,7 +193,7 @@ class BaseModel(metaclass=ABCMeta):
 
             # Create optimizer ops
             self.global_step = tf.Variable(0, trainable=False, name='global_step')
-            opt = tf.train.RMSPropOptimizer(self.config['learning_rate'])
+            opt = tf.train.AdamOptimizer(self.config['learning_rate'])
             with tf.control_dependencies(update_ops):
                 self.trainer = opt.apply_gradients(
                         gradvars, global_step=self.global_step)
