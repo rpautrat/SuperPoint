@@ -2,21 +2,27 @@ data:
     name: 'synthetic_shapes'
     primitives: 'all'
     cache_in_memory: true
-    validation_size: 100
-    suffix: '120-160'
+    validation_size: 500
+    suffix: 'v3'
     preprocessing:
-        blur_size: 11
+        blur_size: 21
         resize: [120, 160]
     augmentations:
         enable: true
-        primitives: ['additive_gaussian_noise', 'motion_blur']
+        primitives: [
+            'random_brightness', 'additive_gaussian_noise',
+            'additive_speckle_noise', 'add_shade', 'motion_blur']
         params:
-            additive_gaussian_noise: {std: [3, 15]}
-            motion_blur: {ksize: 4}
+            additive_gaussian_noise: {std: [3, 12]}
+            motion_blur: {max_ksize: 7}
+            additive_speckle_noise: {intensity: 1}
+            add_shade: {amplitude: [-.3, .8], kernel_size_interval: [50, 100]}
+            random_brightness: {max_change: 75}
 model:
     name: 'magic_point'
     batch_size: 32
     eval_batch_size: 50
     learning_rate: 0.001
-train_iter: 100000
+train_iter: 200000
 eval_iter: 500
+validation_interval: 1000

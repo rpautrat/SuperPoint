@@ -198,10 +198,11 @@ class SyntheticShapes(BaseDataset):
 
         # Python function
         def _augmentation(image, points):
-            primitive = np.random.choice(config['augmentation']['primitives'])
-            image, points = getattr(daug, primitive)(
-                    image[:, :, 0], points,
-                    **config['augmentation']['params'].get(primitive, {}))
+            image = image[:, :, 0]
+            for primitive in config['augmentation']['primitives']:
+                image, points = getattr(daug, primitive)(
+                        image, points,
+                        **config['augmentation']['params'].get(primitive, {}))
             return image[..., np.newaxis].astype(np.float32), points.astype(np.float32)
 
         if config['on-the-fly']:
