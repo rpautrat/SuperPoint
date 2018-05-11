@@ -297,8 +297,42 @@ def random_crop(img, keypoints, random_state=None, min_crop_ratio=0.5):
     return (cv.resize(cropped_img, (shape[1], shape[0])), new_keypoints)
 
 
-def add_shade(img, keypoints, random_state=None, max_nb_ellipses=20,
-              transparency=0.4, kernel_size_interval=(150, 250)):
+def add_shade(img, keypoints, random_state=None, nb_ellipses=20,
+              amplitude=[-0.5, 0.8], kernel_size_interval=(250, 350)):
+    """ Overlay the image with several shades
+    Parameters:
+      nb_ellipses: number of shades
+      amplitude: tuple containing the illumination bound (between -1 and 0) and the
+        shawdow bound (between 0 and 1)
+      kernel_size_interval: interval of the kernel used to blur the shades
+    """
+    if random_state is None:
+        random_state = np.random.RandomState(None)
+    transparency = random_state.uniform(*amplitude)
+
+    min_dim = min(img.shape) / 4
+    mask = np.zeros(img.shape[:2], np.uint8)
+    for i in range(nb_ellipses):
+        ax = int(max(random_state.rand() * min_dim, min_dim / 5))
+        ay = int(max(random_state.rand() * min_dim, min_dim / 5))
+        max_rad = max(ax, ay)
+        x = random_state.randint(max_rad, img.shape[1] - max_rad)  # center
+        y = random_state.randint(max_rad, img.shape[0] - max_rad)
+        angle = random_state.rand() * 90
+        cv.ellipse(mask, (x, y), (ax, ay), angle, 0, 360, 255, -1)
+
+    kernel_size = int(kernel_size_interval[0] + random_state.rand() *
+                      (kernel_size_interval[1] - kernel_size_interval[0]))
+    if (kernel_size % 2) == 0:  # kernel_size has to be odd
+        kernel_size += 1
+    mask = cv.GaussianBlur(mask.astype(np.float), (kernel_size, kernel_size), 0)
+    shaded = img * (1 - transparency * mask/255.)
+    shaded = np.clip(shaded, 0, 255)
+    return (shaded.astype(np.uint8), keypoints)
+
+
+def add_fog(img, keypoints, random_state=None, max_nb_ellipses=20,
+            transparency=0.4, kernel_size_interval=(150, 250)):
     """ Overlay the image with several shades
     Parameters:
       max_nb_ellipses: number max of shades
@@ -335,6 +369,7 @@ def add_shade(img, keypoints, random_state=None, max_nb_ellipses=20,
                       (kernel_size_interval[1] - kernel_size_interval[0]))
     if (kernel_size % 2) == 0:  # kernel_size has to be odd
         kernel_size += 1
+
     cv.GaussianBlur(shaded_img, (kernel_size, kernel_size), 0, shaded_img)
     mask = np.where(shaded_img != img)
     shaded_img[mask] = (1 - transparency) * shaded_img[mask] + transparency * img[mask]
@@ -342,8 +377,10 @@ def add_shade(img, keypoints, random_state=None, max_nb_ellipses=20,
     return (shaded_img.astype(np.uint8), keypoints)
 
 
-def motion_blur(img, keypoints, ksize=10):
+def motion_blur(img, keypoints, max_ksize=10):
+    # Either vertial, hozirontal or diagonal blur
     mode = np.random.choice(['h', 'v', 'diag_down', 'diag_up'])
+    ksize = np.random.randint(0, (max_ksize+1)/2)*2 + 1  # make sure is odd
     center = int((ksize-1)/2)
     kernel = np.zeros((ksize, ksize))
     if mode == 'h':
