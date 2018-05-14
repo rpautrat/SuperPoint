@@ -91,6 +91,19 @@ homography_adaptation_default_config = {
 
 
 def homography_adaptation(image, net, config):
+    """Perfoms homography adaptation.
+    Inference using multiple random wrapped patches of the same input image for robust
+    predictions.
+    Arguments:
+        image: A `Tensor` with shape `[N, H, W, 1]`.
+        net: A function that takes an image as input, performs inference, and outputs the
+            prediction dictionary.
+        config: A configuration dictionary containing optional entries such as the number
+            of sampled homographies `'num'`, the aggregation method `'aggregation'`.
+    Returns:
+        A dictionary which contains the aggregated detection probabilities.
+    """
+
     probs = net(image)['prob']
     counts = tf.ones_like(probs)
     images = image
