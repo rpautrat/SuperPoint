@@ -16,13 +16,14 @@ from superpoint.settings import DATA_PATH
 class SyntheticShapes(BaseDataset):
     default_config = {
             'primitives': 'all',
+            'truncate': {},
             'validation_size': -1,
             'test_size': -1,
             'on-the-fly': False,
             'cache_in_memory': False,
             'suffix': None,
             'generation': {
-                'split_sizes': {'training': 5000, 'validation': 200, 'test': 500},
+                'split_sizes': {'training': 10000, 'validation': 200, 'test': 500},
                 'image_size': [960, 1280],
                 'random_seed': 0,
                 'params': {
@@ -128,11 +129,13 @@ class SyntheticShapes(BaseDataset):
             tar.extractall(path=temp_dir)
             tar.close()
 
-            # Gather filenames in all splits
+            # Gather filenames in all splits, optionally truncate
+            truncate = config['truncate'].get(primitive, 1)
             path = Path(temp_dir, primitive)
             for s in splits:
                 for obj in ['images', 'points']:
-                    splits[s][obj].extend([str(p) for p in Path(path, obj, s).iterdir()])
+                    e = [str(p) for p in Path(path, obj, s).iterdir()]
+                    splits[s][obj].extend(e[:int(truncate*len(e))])
 
         # Shuffle
         for s in splits:

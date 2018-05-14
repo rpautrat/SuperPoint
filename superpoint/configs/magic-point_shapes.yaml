@@ -1,9 +1,10 @@
 data:
     name: 'synthetic_shapes'
     primitives: 'all'
+    truncate: {draw_ellipses: 0.3, draw_stripes: 0.5, gaussian_noise: 0.3}
     cache_in_memory: true
     validation_size: 500
-    suffix: 'v3'
+    suffix: 'v5'
     preprocessing:
         blur_size: 21
         resize: [120, 160]
@@ -16,7 +17,7 @@ data:
             additive_gaussian_noise: {std: [3, 12]}
             motion_blur: {max_ksize: 7}
             additive_speckle_noise: {intensity: 1}
-            add_shade: {amplitude: [-.3, .8], kernel_size_interval: [50, 100]}
+            add_shade: {amplitude: [-.5, .8], kernel_size_interval: [50, 100]}
             random_brightness: {max_change: 75}
 model:
     name: 'magic_point'
