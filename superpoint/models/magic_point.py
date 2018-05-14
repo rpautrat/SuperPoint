@@ -12,6 +12,7 @@ class MagicPoint(BaseModel):
     required_config_keys = []
     default_config = {
             'data_format': 'channels_first',
+            'kernel_reg': 0.,
             'grid_size': 8,
             'detection_threshold': 0.4,
             'homography_adaptation': {'num': 0},

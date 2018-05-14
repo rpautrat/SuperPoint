@@ -24,6 +24,9 @@ model:
     batch_size: 32
     eval_batch_size: 50
     learning_rate: 0.001
-train_iter: 200000
+    kernel_reg: 0.01
+train_iter: 100000
 eval_iter: 500
 validation_interval: 1000
+save_interval: 5000
+keep_checkpoints: 20

@@ -9,7 +9,7 @@ from superpoint.utils.tools import dict_update
 def detector_head(inputs, **config):
     params_conv = {'padding': 'SAME', 'data_format': config['data_format'],
                    'activation': tf.nn.relu, 'batch_normalization': True,
-                   'training': config['training']}
+                   'training': config['training'], 'kernel_reg': config['kernel_reg']}
     cfirst = config['data_format'] == 'channels_first'
     cindex = 1 if cfirst else -1  # index of the channel
 

@@ -3,9 +3,10 @@ from tensorflow import layers as tfl
 
 
 def vgg_block(inputs, filters, kernel_size, name, data_format, training=False,
-              batch_normalization=True, **params):
+              batch_normalization=True, kernel_reg=0., **params):
     with tf.variable_scope(name):
         x = tfl.conv2d(inputs, filters, kernel_size, name='conv',
+                       kernel_regularizer=tf.contrib.layers.l2_regularizer(kernel_reg),
                        data_format=data_format, **params)
         if batch_normalization:
             x = tfl.batch_normalization(
@@ -17,7 +18,7 @@ def vgg_block(inputs, filters, kernel_size, name, data_format, training=False,
 def vgg_backbone(inputs, **config):
     params_conv = {'padding': 'SAME', 'data_format': config['data_format'],
                    'activation': tf.nn.relu, 'batch_normalization': True,
-                   'training': config['training']}
+                   'training': config['training'], 'kernel_reg': config['kernel_reg']}
     params_pool = {'padding': 'SAME', 'data_format': config['data_format']}
 
     with tf.variable_scope('vgg'):
