@@ -2,7 +2,7 @@ import tensorflow as tf
 
 from .base_model import BaseModel, Mode
 from .backbones.vgg import vgg_backbone
-from .utils import detector_head, homography_adaptation_batch, box_nms
+from .utils import detector_head, homography_adaptation, box_nms
 
 
 class MagicPoint(BaseModel):
@@ -32,8 +32,7 @@ class MagicPoint(BaseModel):
             return outputs
 
         if (mode == Mode.PRED) and config['homography_adaptation']['num']:
-            outputs = homography_adaptation_batch(
-                    image, net, config['homography_adaptation'])
+            outputs = homography_adaptation(image, net, config['homography_adaptation'])
         else:
             outputs = net(image)
 

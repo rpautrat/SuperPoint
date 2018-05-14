@@ -90,32 +90,16 @@ homography_adaptation_default_config = {
 }
 
 
-def homography_adaptation(image, net, config, approximate_inverse=True):
-    """Perfoms homography adaptation.
-
-    Inference using multiple random wrapped patches of the same input image for robust
-    predictions.
-
-    Arguments:
-        image: A `Tensor` with shape `[H, W, 1]`.
-        net: A function that takes an image as input, performs inference, and outputs the
-            prediction dictionary.
-        config: A configuration dictionary containing optional entries such as the number
-            of sampled homographies `'num'`, the aggregation method `'aggregation'`.
-
-    Returns:
-        A dictionary which contains the aggregated detection probabilities.
-    """
-
+def homography_adaptation(image, net, config):
     probs = net(image)['prob']
     counts = tf.ones_like(probs)
     images = image
 
-    probs = tf.expand_dims(probs, axis=0)
-    counts = tf.expand_dims(counts, axis=0)
-    images = tf.expand_dims(images, axis=0)
+    probs = tf.expand_dims(probs, axis=-1)
+    counts = tf.expand_dims(counts, axis=-1)
+    images = tf.expand_dims(images, axis=-1)
 
-    shape = tf.shape(image)[:2]
+    shape = tf.shape(image)[1:3]
     config = dict_update(homography_adaptation_default_config, config)
 
     def step(i, probs, counts, images):
@@ -123,51 +107,19 @@ def homography_adaptation(image, net, config, approximate_inverse=True):
         H = sample_homography(shape, **config['homographies'])
         H_inv = invert_homography(H)
         wrapped = H_transform(image, H, interpolation='BILINEAR')
-        count = H_transform(tf.ones(shape), H_inv, interpolation='NEAREST')
+        count = H_transform(tf.expand_dims(tf.ones(tf.shape(image)[:3]), -1),
+                            H_inv, interpolation='NEAREST')[..., 0]
 
         # Predict detection probabilities
         input_wrapped = tf.image.resize_images(wrapped, tf.floordiv(shape, 2))
         prob = net(input_wrapped)['prob']
         prob = tf.image.resize_images(tf.expand_dims(prob, axis=-1), shape)[..., 0]
+        prob_proj = H_transform(tf.expand_dims(prob, -1), H_inv,
+                                interpolation='BILINEAR')[..., 0]
 
-        # In theory, directly inverting the probability map tends to discard many points
-        # with high probability. However experiments show that this is not an issue for
-        # a large number of homographies, and is 3 times faster than an exact inverse.
-        if approximate_inverse:
-            prob_proj = H_transform(prob, H_inv, interpolation='BILINEAR')
-        else:
-            # Select the points to be mapped back to the original image
-            pts = tf.where(tf.greater_equal(prob, 0.01))
-            selected_prob = tf.gather_nd(prob, pts)
-
-            # Compute the projected coordinates
-            pad = tf.ones(tf.stack([tf.shape(pts)[0], tf.constant(1)]))
-            pts_homogeneous = tf.concat([tf.reverse(tf.to_float(pts), axis=[1]), pad], 1)
-            pts_proj = tf.matmul(pts_homogeneous, tf.transpose(flat2mat(H)[0]))
-            pts_proj = pts_proj[:, :2] / tf.expand_dims(pts_proj[:, 2], axis=1)
-            pts_proj = tf.to_int32(tf.round(tf.reverse(pts_proj, axis=[1])))
-
-            # Hack: convert 2D coordinates to 1D indices in order to use tf.unique
-            pts_idx = pts_proj[:, 0] * shape[1] + pts_proj[:, 1]
-            pts_idx_unique, idx = tf.unique(pts_idx)
-
-            # Keep maximum corresponding probability for each projected point
-            # Hack: tf.segment_max requires sorted indices
-            idx, sort_idx = tf.nn.top_k(idx, k=tf.shape(idx)[0])
-            idx = tf.reverse(idx, axis=[0])
-            sort_idx = tf.reverse(sort_idx, axis=[0])
-            selected_prob = tf.gather(selected_prob, sort_idx)
-            with tf.device('/cpu:0'):
-                unique_prob = tf.segment_max(selected_prob, idx)
-
-            # Create final probability map
-            pts_proj_unique = tf.stack([tf.floordiv(pts_idx_unique, shape[1]),
-                                        tf.floormod(pts_idx_unique, shape[1])], axis=1)
-            prob_proj = tf.scatter_nd(pts_proj_unique, unique_prob, shape)
-
-        probs = tf.concat([probs, tf.expand_dims(prob_proj, 0)], axis=0)
-        counts = tf.concat([counts, tf.expand_dims(count, 0)], axis=0)
-        images = tf.concat([images, tf.expand_dims(wrapped, 0)], axis=0)
+        probs = tf.concat([probs, tf.expand_dims(prob_proj, -1)], axis=-1)
+        counts = tf.concat([counts, tf.expand_dims(count, -1)], axis=-1)
+        images = tf.concat([images, tf.expand_dims(wrapped, -1)], axis=-1)
         return i + 1, probs, counts, images
 
     _, probs, counts, images = tf.while_loop(
@@ -175,15 +127,16 @@ def homography_adaptation(image, net, config, approximate_inverse=True):
             step,
             [0, probs, counts, images],
             parallel_iterations=1,
+            back_prop=False,
             shape_invariants=[
                     tf.TensorShape([]),
-                    tf.TensorShape([None, None, None]),
-                    tf.TensorShape([None, None, None]),
-                    tf.TensorShape([None, None, None, 1])])
+                    tf.TensorShape([None, None, None, None]),
+                    tf.TensorShape([None, None, None, None]),
+                    tf.TensorShape([None, None, None, 1, None])])
 
-    counts = tf.reduce_sum(counts, axis=0)
-    max_prob = tf.reduce_max(probs, axis=0)
-    mean_prob = tf.reduce_sum(probs, axis=0) / counts
+    counts = tf.reduce_sum(counts, axis=-1)
+    max_prob = tf.reduce_max(probs, axis=-1)
+    mean_prob = tf.reduce_sum(probs, axis=-1) / counts
 
     if config['aggregation'] == 'max':
         prob = max_prob
@@ -198,18 +151,6 @@ def homography_adaptation(image, net, config, approximate_inverse=True):
 
     return {'prob': prob, 'counts': counts,
             'mean_prob': mean_prob, 'input_images': images, 'H_probs': probs}  # debug
-
-
-def homography_adaptation_batch(images, net, config):
-    ha_dtype = {i: tf.float32
-                for i in ['prob', 'counts', 'mean_prob', 'input_images', 'H_probs']}
-
-    def net_single(image):
-        outputs = net(tf.expand_dims(image, axis=0))
-        return {k: v[0] for k, v in outputs.items()}
-
-    return tf.map_fn(lambda image: homography_adaptation(image, net_single, config),
-                     images, dtype=ha_dtype)
 
 
 def sample_homography(
