@@ -40,7 +40,7 @@ class BaseModel(metaclass=ABCMeta):
     """
     dataset_names = set(['training', 'validation', 'test'])
     required_baseconfig = ['batch_size', 'learning_rate']
-    _default_config = {'eval_batch_size': 1}
+    _default_config = {'eval_batch_size': 1, 'pred_batch_size': 1}
 
     @abstractmethod
     def _model(self, inputs, mode, **config):
@@ -121,12 +121,10 @@ class BaseModel(metaclass=ABCMeta):
         with tf.variable_scope(self.name, reuse=tf.AUTO_REUSE):
             self._build_graph()
 
-    def _gpu_tower(self, data, mode):
+    def _gpu_tower(self, data, mode, batch_size):
         # Split the batch between the GPUs (data parallelism)
         with tf.device('/cpu:0'):
             with tf.name_scope('{}_data_sharding'.format(mode)):
-                batch_size = self.config['batch_size'] if (mode == Mode.TRAIN) \
-                        else self.config['eval_batch_size']
                 shards = {d: tf.unstack(v, num=batch_size*self.n_gpus, axis=0)
                           for d, v in data.items()}
                 shards = [{d: tf.stack(v[i::self.n_gpus]) for d, v in shards.items()}
@@ -171,7 +169,8 @@ class BaseModel(metaclass=ABCMeta):
             return tower_preds
 
     def _train_graph(self, data):
-        tower_losses, tower_gradvars, update_ops = self._gpu_tower(data, Mode.TRAIN)
+        tower_losses, tower_gradvars, update_ops = self._gpu_tower(
+                data, Mode.TRAIN, self.config['batch_size'])
 
         # Perform the consolidation on CPU
         gradvars = []
@@ -199,15 +198,15 @@ class BaseModel(metaclass=ABCMeta):
                         gradvars, global_step=self.global_step)
 
     def _eval_graph(self, data):
-        tower_metrics = self._gpu_tower(data, Mode.EVAL)
+        tower_metrics = self._gpu_tower(data, Mode.EVAL, self.config['eval_batch_size'])
         with tf.device('/cpu:0'):
             self.metrics = {m: tf.reduce_mean(tf.stack([t[m] for t in tower_metrics]))
                             for m in tower_metrics[0]}
 
     def _pred_graph(self, data):
-        with tf.name_scope('pred'):
-            with tf.device('/gpu:0'):
-                self.pred_out = self._model(data, Mode.PRED, **self.config)
+        pred = self._gpu_tower(data, Mode.PRED, self.config['pred_batch_size'])
+        with tf.device('/cpu:0'):
+            self.pred_out = {k: tf.concat([v[k] for v in pred], axis=0) for k in pred[0]}
 
     def _build_graph(self):
         # Training and evaluation network, if tf datasets provided
@@ -260,7 +259,8 @@ class BaseModel(metaclass=ABCMeta):
         self._pred_graph(self.pred_in)
 
         # Start session
-        sess_config = tf.ConfigProto(device_count={'GPU': self.n_gpus})
+        sess_config = tf.ConfigProto(device_count={'GPU': self.n_gpus},
+                                     allow_soft_placement=True)
         sess_config.gpu_options.allow_growth = True
         self.sess = tf.Session(config=sess_config)
 
