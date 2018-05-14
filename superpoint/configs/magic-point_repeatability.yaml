@@ -2,8 +2,6 @@ data:
     name: 'patches_dataset'
     dataset: 'hpatches'  # 'coco' 'hpatches'
     alteration: 'v'  # 'all' 'i' 'v'
-    cache_in_memory: false
-    validation_size: 100
     preprocessing:
         resize: [240, 320]  # False for coco
 model:

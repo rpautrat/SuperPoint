@@ -13,10 +13,9 @@ class PatchesDataset(BaseDataset):
         'dataset': 'hpatches',  # or 'coco'
         'alteration': 'all',  # 'all', 'i' for illumination or 'v' for viewpoint
         'cache_in_memory': False,
-        'validation_size': 100,
         'truncate': None,
         'preprocessing': {
-            'resize': [240, 320]
+            'resize': False
         }
     }
 
@@ -99,11 +98,5 @@ class PatchesDataset(BaseDataset):
 
         data = tf.data.Dataset.zip({'image': images, 'warped_image': warped_images,
                                     'homography': homographies})
-
-        if split_name == 'validation':
-            data = data.take(config['validation_size'])
-        if config['cache_in_memory']:
-            tf.logging.info('Caching data, first access will take some time.')
-            data = data.cache()
 
         return data
