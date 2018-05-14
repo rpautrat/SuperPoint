@@ -55,10 +55,14 @@ def set_seed(seed):
     np.random.seed(seed)
 
 
+def get_num_gpus():
+    return len(os.environ['CUDA_VISIBLE_DEVICES'].split(','))
+
+
 @contextmanager
 def _init_graph(config, with_dataset=False):
     set_seed(config.get('seed', int.from_bytes(os.urandom(4), byteorder='big')))
-    n_gpus = len(os.environ['CUDA_VISIBLE_DEVICES'].split(','))
+    n_gpus = get_num_gpus()
     logging.info('Number of GPUs detected: {}'.format(n_gpus))
 
     dataset = get_dataset(config['data']['name'])(**config['data'])
