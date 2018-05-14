@@ -58,8 +58,9 @@ if __name__ == '__main__':
     H = sample_homography(tf.shape(image)[:2], **config['homographies'])
     warped_image = tf.contrib.image.transform(image, H, interpolation="BILINEAR")
     patch_ratio = config['homographies']['patch_ratio']
-    warped_image = tf.image.resize_images(warped_image,
-                                          tf.multiply(shape, patch_ratio))
+    new_shape = tf.multiply(tf.cast(shape, tf.float32), patch_ratio)
+    new_shape = tf.cast(new_shape, tf.int32)
+    warped_image = tf.image.resize_images(warped_image, new_shape)
     H = invert_homography(H)
     H = flat2mat(H)[0, :, :]
 

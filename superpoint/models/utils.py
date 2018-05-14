@@ -216,7 +216,7 @@ def homography_adaptation_batch(images, net, config):
 
 def sample_homography(
         shape, perspective=True, scaling=True, rotation=True, translation=True,
-        n_scales=5, n_angles=16, scaling_amplitude=0.1, perspective_amplitude=0.1,
+        n_scales=5, n_angles=25, scaling_amplitude=0.1, perspective_amplitude=0.1,
         patch_ratio=0.5, max_angle=pi):
     """Sample a random valid homography.
 
