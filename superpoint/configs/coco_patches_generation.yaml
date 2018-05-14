@@ -5,5 +5,7 @@ homographies:
     perspective: true
     scaling_amplitude: 0.1
     perspective_amplitude: 0.05
+    patch_ratio: 0.8
+    max_angle: 3.14
 preprocessing:
     resize: [240, 320]
