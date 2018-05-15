@@ -31,7 +31,7 @@ def detector_head(inputs, **config):
     cindex = 1 if cfirst else -1  # index of the channel
 
     with tf.variable_scope('detector', reuse=tf.AUTO_REUSE):
-        x = vgg_block(inputs, 256, 3, 'conv1', **params_conv)
+        x = vgg_block(inputs, config['descriptor_size'], 3, 'conv1', **params_conv)
         x = vgg_block(inputs, 1+pow(config['grid_size'], 2), 1, 'conv2', **params_conv)
 
         prob = tf.nn.softmax(x, axis=cindex)
@@ -55,22 +55,13 @@ def descriptor_head(inputs, **config):
         x = vgg_block(inputs, 256, 3, 'conv1', **params_conv)
         x = vgg_block(inputs, config['descriptor_size'], 1, 'conv2', **params_conv)
 
-        if cindex == -1:
-            with tf.device('/cpu:0'):
-                desc = tf.image.resize_bicubic(x,
-                                               config['grid_size'] *
-                                               tf.shape(x)[1:3])
-        else:  # cindex == 1
-            # resize_bicubic only supports channels last
-            desc = tf.transpose(x, [0, 2, 3, 1])
-            with tf.device('/cpu:0'):
-                desc = tf.image.resize_bicubic(x,
-                                               config['grid_size'] *
-                                               tf.shape(desc)[1:3])
-            desc = tf.transpose(desc, [0, 3, 1, 2])
+        desc = tf.transpose(x, [0, 2, 3, 1]) if cfirst else x
+        with tf.device('/cpu:0'):  # op not supported on GPU yet
+            desc = tf.image.resize_bicubic(x, config['grid_size'] * tf.shape(x)[1:3])
+        desc = tf.transpose(x, [0, 3, 1, 2]) if cfirst else desc
         desc = tf.nn.l2_normalize(desc, cindex)
 
-    return {'logits': x, 'descriptor': desc}
+    return {'descriptors_raw': x, 'descriptors': desc}
 
 
 def spatial_nms(prob, size):
@@ -306,11 +297,12 @@ def sample_homography(
     # sample several rotations, check collision with borders, randomly pick a valid one
     if rotation:
         angles = tf.lin_space(tf.constant(-max_angle), tf.constant(max_angle), n_angles)
+        angles = tf.concat([[0.], angles], axis=0)  # in case no rotation is valid
         center = tf.reduce_mean(pts2, axis=0, keepdims=True)
         rot_mat = tf.reshape(tf.stack([tf.cos(angles), -tf.sin(angles), tf.sin(angles),
                                        tf.cos(angles)], axis=1), [-1, 2, 2])
         rotated = tf.matmul(
-                tf.tile(tf.expand_dims(pts2 - center, axis=0), [n_angles, 1, 1]),
+                tf.tile(tf.expand_dims(pts2 - center, axis=0), [n_angles+1, 1, 1]),
                 rot_mat) + center
         valid = tf.logical_and(tf.greater_equal(rotated, 0.), tf.less(rotated, 1.))
         valid = tf.where(tf.reduce_all(valid, axis=[1, 2]))
@@ -357,6 +349,35 @@ def mat2flat(H):
     return (H / H[:, 8:9])[:, :8]
 
 
+def warp_keypoints(keypoints, homography):
+    """
+    Warp a list of points with the INVERSE of the given homography.
+    The inverse is used to be coherent with tf.contrib.image.transform
+
+    Arguments:
+        keypoints: list of N points, shape (N, 2).
+        homography: batched or not (shapes (B, 8) and (8,) respectively).
+
+    Returns: a Tensor of shape (N, 2) or (B, N, 2) (depending on whether the homography
+            is batched) containing the new coordinates of the warped keypoints.
+    """
+    H = tf.expand_dims(homography, axis=0) if len(homography.shape) == 1 else homography
+
+    # Get the keypoints to the homogeneous format
+    n_keypoints = tf.shape(keypoints)[0]
+    keypoints = tf.cast(keypoints, tf.float32)[:, ::-1]
+    keypoints = tf.concat([keypoints, tf.ones([n_keypoints, 1], dtype=tf.float32)], -1)
+
+    # Apply the homography
+    H_inv = tf.transpose(flat2mat(invert_homography(H)))
+    warped_keypoints = tf.tensordot(keypoints, H_inv, [[1], [0]])
+    warped_keypoints = warped_keypoints[:, :2, :] / warped_keypoints[:, 2:, :]
+    warped_keypoints = tf.transpose(warped_keypoints, [2, 0, 1])[:, :, ::-1]
+
+    return warped_keypoints[0] if len(homography.shape) == 1 else warped_keypoints
+
+
+# TODO: cleanup the two following functions
 def warp_keypoints_to_list(packed_arg):
     """
     Warp a map of keypoints (pixel is 1 for a keypoint and 0 else) with
@@ -426,22 +447,3 @@ def warp_keypoints_to_map(packed_arg):
                             shape)
 
     return new_map
-
-
-def tf_repeat(tensor, repeats):
-    """
-    Equivalent of np.repeat but for Tensors.
-
-    Arguments:
-        tensor: A Tensor (1-D or higher).
-        repeats: A list indicating the number of repeat for each dimension
-                 (length must be the same as the number of dimensions in tensor).
-
-    Returns: A Tensor with the same type as tensor and a shape of tensor.shape * repeats
-    """
-    with tf.variable_scope("repeat"):
-        expanded_tensor = tf.expand_dims(tensor, -1)
-        multiples = [1] + repeats
-        tiled_tensor = tf.tile(expanded_tensor, multiples)
-        repeated_tensor = tf.reshape(tiled_tensor, tf.shape(tensor) * repeats)
-    return repeated_tensor

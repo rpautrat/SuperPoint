@@ -1,12 +1,12 @@
 data:
     name: 'coco'
-    primitives: 'all'
-    cache_in_memory: false
-    validation_size: 100
+    cache_in_memory: true
+    validation_size: 192
+    labels: 'null'  # Complete
 model:
     name: 'super_point'
-    batch_size: 10
-    eval_batch_size: 10
+    batch_size: 3
+    eval_batch_size: 3
     learning_rate: 0.001
     lambda_d: 250
     positive_margin: 1
@@ -15,7 +15,7 @@ model:
     detection_threshold: 0.015 # 1/65
     nms: 4
     top_k: 300
-    homographies:
+    homography_sampling:
         translation: true
         rotation: true
         scaling: true
@@ -23,5 +23,6 @@ model:
         scaling_amplitude: 0.1
         perspective_amplitude: 0.05
         patch_ratio: 0.75
+        max_angle: 3.14
 train_iter: 100000
 eval_iter: 50
