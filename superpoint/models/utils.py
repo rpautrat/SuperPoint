@@ -6,6 +6,21 @@ from .backbones.vgg import vgg_block
 from superpoint.utils.tools import dict_update
 
 
+homography_adaptation_default_config = {
+        'num': 1,
+        'aggregation': 'sum',
+        'homographies': {
+            'translation': True,
+            'rotation': True,
+            'scaling': True,
+            'perspective': True,
+            'scaling_amplitude': 0.1,
+            'perspective_amplitude': 0.05,
+        },
+        'filter_counts': 0
+}
+
+
 def detector_head(inputs, **config):
     params_conv = {'padding': 'SAME', 'data_format': config['data_format'],
                    'activation': tf.nn.relu, 'batch_normalization': True,
@@ -73,21 +88,6 @@ def box_nms(prob, size, iou=0.1, min_prob=0.01, keep_top_k=0):
             pts = tf.gather(pts, indices)
         prob = tf.scatter_nd(tf.to_int32(pts), scores, tf.shape(prob))
     return prob
-
-
-homography_adaptation_default_config = {
-        'num': 1,
-        'aggregation': 'sum',
-        'homographies': {
-            'translation': True,
-            'rotation': True,
-            'scaling': True,
-            'perspective': True,
-            'scaling_amplitude': 0.1,
-            'perspective_amplitude': 0.05,
-        },
-        'filter_counts': 0
-}
 
 
 def homography_adaptation(image, net, config):
