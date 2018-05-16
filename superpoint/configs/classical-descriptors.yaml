@@ -1,0 +1,17 @@
+data:
+    name: 'patches_dataset'
+    dataset: 'hpatches'  # 'hpatches' 'coco'
+    alteration: 'all'  # 'i' 'v' 'all'
+    cache_in_memory: false
+    validation_size: 100
+    preprocessing:
+        resize: [480, 640]  # False for coco
+model:
+    name: 'classical_detectors_descriptors'
+    method: 'sift'  # 'orb' 'sift'
+    batch_size: 50  # unused
+    learning_rate: 0.001  # unused
+    nms: 4
+    top_k: 1000
+eval_iter: 600
+seed: 1
