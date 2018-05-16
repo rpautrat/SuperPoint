@@ -2,6 +2,7 @@ tensorflow-gpu==1.6
 numpy
 scipy
 opencv-python
+opencv-python-contrib
 tqdm
 pyyaml
 flake8

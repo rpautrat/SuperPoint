@@ -48,43 +48,41 @@ def keep_shared_points(keypoint_map, H, keep_k_points=1000):
     keypoints = keep_true_keypoints(keypoints, H, keypoint_map.shape)
     keypoints = select_k_best(keypoints, keep_k_points)
 
-    return keypoints
+    return keypoints.astype(int)
 
 
-def nearest_neighbor(desc1, desc2):
-    """
-    For each descriptor in desc1, find the nearest neighbor in desc2.
-    Outputs a list of the matches (indices of the desc2 neighbors).
-    """
-    extended_desc1 = np.expand_dims(desc1, axis=1)
-    extended_desc2 = np.expand_dims(desc2, axis=0)
-    distances = np.linalg.norm(extended_desc1 - extended_desc2, ord=None, axis=2)
-    nearest_neighbors = np.argmin(distances, axis=1)
-    return nearest_neighbors
-
-
-def compute_homography(data, keep_k_points=1000, correctness_thresh=3):
+def compute_homography(data, keep_k_points=1000, correctness_thresh=3, orb=False):
     """
     Compute the homography between 2 sets of detections and descriptors inside data.
     """
-    shape = data['keypoints']['prob_nms'].shape
+    shape = data['prob'].shape
     real_H = data['homography']
 
     # Keeps only the points shared between the two views
-    keypoints = keep_shared_points(data['keypoints']['prob_nms'],
+    keypoints = keep_shared_points(data['prob'],
                                    real_H, keep_k_points)
-    warped_keypoints = keep_shared_points(data['warped_keypoints']['prob_nms'],
+    warped_keypoints = keep_shared_points(data['warped_prob'],
                                           np.linalg.inv(real_H), keep_k_points)
-    desc = data['descriptors']['descriptor'][keypoints[:, 0], keypoints[:, 1]]
-    warped_desc = data['warped_descriptors']['descriptor'][warped_keypoints[:, 0],
-                                                           warped_keypoints[:, 1]]
+    desc = data['desc'][keypoints[:, 0], keypoints[:, 1]]
+    warped_desc = data['warped_desc'][warped_keypoints[:, 0],
+                                      warped_keypoints[:, 1]]
 
     # Match the keypoints with the warped_keypoints with nearest neighbor search
-    matches = nearest_neighbor(desc, warped_desc)
-    matched_keypoints = warped_keypoints[matches, :]
+    if orb:
+        desc = desc.astype(np.uint8)
+        warped_desc = warped_desc.astype(np.uint8)
+        bf = cv2.BFMatcher(cv2.NORM_HAMMING)
+    else:
+        bf = cv2.BFMatcher(cv2.NORM_L2)
+    matches = bf.match(desc, warped_desc)
+    matches_idx = np.array([m.trainIdx for m in matches])
+    matched_keypoints = warped_keypoints[matches_idx, :]
 
     # Estimate the homography between the matches using RANSAC
-    H, inliers = cv2.findHomography(keypoints, matched_keypoints, cv2.CV_RANSAC)
+    H, inliers = cv2.findHomography(keypoints[:, [1, 0]],
+                                    matched_keypoints[:, [1, 0]],
+                                    cv2.RANSAC)
+    inliers = inliers.flatten()
 
     # Compute correctness
     corners = np.array([[0, 0, 1],
@@ -107,7 +105,7 @@ def compute_homography(data, keep_k_points=1000, correctness_thresh=3):
 
 
 def homography_estimation(exper_name, keep_k_points=1000,
-                          correctness_thresh=3):
+                          correctness_thresh=3, orb=False):
     """
     Estimates the homography between two images given the predictions.
     The experiment must contain in its output the prediction on 2 images, an original
@@ -118,13 +116,13 @@ def homography_estimation(exper_name, keep_k_points=1000,
     correctness = []
     for path in paths:
         data = np.load(path)
-        estimates = compute_homography(data, keep_k_points, correctness_thresh)
+        estimates = compute_homography(data, keep_k_points, correctness_thresh, orb)
         correctness.append(estimates['correctness'])
     return np.mean(correctness)
 
 
 def get_homography_matches(exper_name, keep_k_points=1000,
-                           correctness_thresh=3, num_images=1):
+                           correctness_thresh=3, num_images=1, orb=False):
     """
     Estimates the homography between two images given the predictions.
     The experiment must contain in its output the prediction on 2 images, an original
@@ -137,7 +135,7 @@ def get_homography_matches(exper_name, keep_k_points=1000,
     outputs = []
     for path in paths[:num_images]:
         data = np.load(path)
-        output = compute_homography(data, keep_k_points, correctness_thresh)
+        output = compute_homography(data, keep_k_points, correctness_thresh, orb)
         output['image1'] = data['image']
         output['image2'] = data['warped_image']
         outputs.append(output)

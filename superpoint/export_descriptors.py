@@ -42,12 +42,12 @@ if __name__ == '__main__':
                 break
             data1 = {'image': data['image']}
             data2 = {'image': data['warped_image']}
-            pred1 = net.predict(data1, keys=['keypoints', 'descriptors'])
-            pred2 = net.predict(data2, keys=['keypoints', 'descriptors'])
-            pred = {'prob': pred1['keypoints']['prob_nms'],
-                    'warped_prob': pred2['keypoints']['prob_nms'],
-                    'desc': pred1['descriptors']['descriptor'],
-                    'warped_desc': pred2['descriptors']['descriptor'],
+            pred1 = net.predict(data1, keys=['prob_nms', 'descriptors'])
+            pred2 = net.predict(data2, keys=['prob_nms', 'descriptors'])
+            pred = {'prob': pred1['prob_nms'],
+                    'warped_prob': pred2['prob_nms'],
+                    'desc': pred1['descriptors'],
+                    'warped_desc': pred2['descriptors'],
                     'homography': data['homography']}
 
             if not ('name' in data):

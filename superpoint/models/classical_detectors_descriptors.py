@@ -7,8 +7,9 @@ from .utils import box_nms
 
 
 def classical_detector_descriptor(im, **config):
+    im = np.uint8(im)
     if config['method'] == 'sift':
-        sift = cv2.xfeatures2d.SIFT_create(nfeatures=600)
+        sift = cv2.xfeatures2d.SIFT_create(nfeatures=1500)
         keypoints, desc = sift.detectAndCompute(im, None)
         responses = np.array([k.response for k in keypoints])
         keypoints = np.array([k.pt for k in keypoints]).astype(int)
@@ -20,7 +21,7 @@ def classical_detector_descriptor(im, **config):
         descriptors[keypoints[:, 1], keypoints[:, 0]] = desc
 
     elif config['method'] == 'orb':
-        orb = cv2.ORB_create(nfeatures=600)
+        orb = cv2.ORB_create(nfeatures=1500)
         keypoints, desc = orb.detectAndCompute(im, None)
         responses = np.array([k.response for k in keypoints])
         keypoints = np.array([k.pt for k in keypoints]).astype(int)
@@ -52,8 +53,10 @@ class ClassicalDetectorsDescriptors(BaseModel):
         im = inputs['image']
         with tf.device('/cpu:0'):
             keypoints, descriptors = tf.map_fn(lambda i: tf.py_func(
-                lambda x: classical_detector_descriptor(x, **config), [i], tf.float32),
-                                               im)
+                lambda x: classical_detector_descriptor(x, **config),
+                [i],
+                (tf.float32, tf.float32)),
+                                               im, [tf.float32, tf.float32])
             prob = keypoints
             prob_nms = prob
             if config['nms']:
@@ -61,14 +64,13 @@ class ClassicalDetectorsDescriptors(BaseModel):
                                                        keep_top_k=config['top_k']), prob)
         pred = tf.cast(tf.greater_equal(prob_nms, config['threshold']), tf.int32)
         keypoints = {'prob': prob, 'prob_nms': prob_nms, 'pred': pred}
-        descriptors = {'descriptor': descriptors}
-        return {'keypoints': keypoints, 'descriptors': descriptors}
+        return {**keypoints, 'descriptors': descriptors}
 
     def _loss(self, outputs, inputs, **config):
         raise NotImplementedError
 
     def _metrics(self, outputs, inputs, **config):
-        pred = outputs['keypoints']['pred']
+        pred = outputs['pred']
         labels = inputs['keypoint_map']
         precision = tf.reduce_sum(pred*labels) / tf.reduce_sum(pred)
         recall = tf.reduce_sum(pred*labels) / tf.reduce_sum(labels)
