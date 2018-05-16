@@ -163,7 +163,7 @@ def draw_lines(img, nb_lines=10):
     return points
 
 
-def draw_polygon(img, max_sides=6):
+def draw_polygon(img, max_sides=8):
     """ Draw a polygon with a random number of corners
     and return the corner points
     Parameters:
@@ -179,8 +179,8 @@ def draw_polygon(img, max_sides=6):
     slices = np.linspace(0, 2 * math.pi, num_corners + 1)
     angles = [slices[i] + random_state.rand() * (slices[i+1] - slices[i])
               for i in range(num_corners)]
-    points = np.array([[int(x + max(random_state.rand(), 0.5) * rad * math.cos(a)),
-                        int(y + max(random_state.rand(), 0.5) * rad * math.sin(a))]
+    points = np.array([[int(x + max(random_state.rand(), 0.4) * rad * math.cos(a)),
+                        int(y + max(random_state.rand(), 0.4) * rad * math.sin(a))]
                        for a in angles])
 
     # Filter the points that are too close or that have an angle too flat
@@ -224,7 +224,7 @@ def angle_between_vectors(v1, v2):
     return np.arccos(np.clip(np.dot(v1_u, v2_u), -1.0, 1.0))
 
 
-def draw_multiple_polygons(img, max_sides=6, nb_polygons=30, **extra):
+def draw_multiple_polygons(img, max_sides=8, nb_polygons=30, **extra):
     """ Draw multiple polygons with a random number of corners
     and return the corner points
     Parameters:
@@ -247,8 +247,8 @@ def draw_multiple_polygons(img, max_sides=6, nb_polygons=30, **extra):
         slices = np.linspace(0, 2 * math.pi, num_corners + 1)
         angles = [slices[i] + random_state.rand() * (slices[i+1] - slices[i])
                   for i in range(num_corners)]
-        new_points = [[int(x + max(random_state.rand(), 0.5) * rad * math.cos(a)),
-                       int(y + max(random_state.rand(), 0.5) * rad * math.sin(a))]
+        new_points = [[int(x + max(random_state.rand(), 0.4) * rad * math.cos(a)),
+                       int(y + max(random_state.rand(), 0.4) * rad * math.sin(a))]
                       for a in angles]
         new_points = np.array(new_points)
 
