@@ -17,10 +17,14 @@ import tensorflow as tf  # noqa: E402
 
 
 def train(config, n_iter, output_dir, checkpoint_name='model.ckpt'):
+    checkpoint_path = os.path.join(output_dir, checkpoint_name)
     with _init_graph(config) as net:
         try:
             net.train(n_iter, output_dir=output_dir,
-                      validation_interval=config.get('validation_interval', 100))
+                      validation_interval=config.get('validation_interval', 100),
+                      save_interval=config.get('save_interval', None),
+                      checkpoint_path=checkpoint_path,
+                      keep_checkpoints=config.get('keep_checkpoints', 1))
         except KeyboardInterrupt:
             logging.info('Got Keyboard Interrupt, saving model and closing.')
         net.save(os.path.join(output_dir, checkpoint_name))
@@ -51,10 +55,14 @@ def set_seed(seed):
     np.random.seed(seed)
 
 
+def get_num_gpus():
+    return len(os.environ['CUDA_VISIBLE_DEVICES'].split(','))
+
+
 @contextmanager
 def _init_graph(config, with_dataset=False):
     set_seed(config.get('seed', int.from_bytes(os.urandom(4), byteorder='big')))
-    n_gpus = len(os.environ['CUDA_VISIBLE_DEVICES'].split(','))
+    n_gpus = get_num_gpus()
     logging.info('Number of GPUs detected: {}'.format(n_gpus))
 
     dataset = get_dataset(config['data']['name'])(**config['data'])

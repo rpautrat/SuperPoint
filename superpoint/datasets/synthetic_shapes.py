@@ -16,19 +16,22 @@ from superpoint.settings import DATA_PATH
 class SyntheticShapes(BaseDataset):
     default_config = {
             'primitives': 'all',
+            'truncate': {},
             'validation_size': -1,
             'test_size': -1,
             'on-the-fly': False,
             'cache_in_memory': False,
             'suffix': None,
             'generation': {
-                'split_sizes': {'training': 5000, 'validation': 200, 'test': 500},
+                'split_sizes': {'training': 10000, 'validation': 200, 'test': 500},
                 'image_size': [960, 1280],
                 'random_seed': 0,
                 'params': {
+                    'generate_background': {
+                        'min_kernel_size': 150, 'max_kernel_size': 500,
+                        'min_rad_ratio': 0.02, 'max_rad_ratio': 0.031},
                     'draw_stripes': {'transform_params': (0.1, 0.1)},
-                    'generate_background': {'min_kernel_size': 100},
-                    'draw_multiple_polygons': {'kernel_boundaries': (40, 80)}
+                    'draw_multiple_polygons': {'kernel_boundaries': (50, 100)}
                 },
             },
             'preprocessing': {
@@ -126,11 +129,13 @@ class SyntheticShapes(BaseDataset):
             tar.extractall(path=temp_dir)
             tar.close()
 
-            # Gather filenames in all splits
+            # Gather filenames in all splits, optionally truncate
+            truncate = config['truncate'].get(primitive, 1)
             path = Path(temp_dir, primitive)
             for s in splits:
                 for obj in ['images', 'points']:
-                    splits[s][obj].extend([str(p) for p in Path(path, obj, s).iterdir()])
+                    e = [str(p) for p in Path(path, obj, s).iterdir()]
+                    splits[s][obj].extend(e[:int(truncate*len(e))])
 
         # Shuffle
         for s in splits:
@@ -196,10 +201,11 @@ class SyntheticShapes(BaseDataset):
 
         # Python function
         def _augmentation(image, points):
-            primitive = np.random.choice(config['augmentation']['primitives'])
-            image, points = getattr(daug, primitive)(
-                    image[:, :, 0], points,
-                    **config['augmentation']['params'].get(primitive, {}))
+            image = image[:, :, 0]
+            for primitive in config['augmentation']['primitives']:
+                image, points = getattr(daug, primitive)(
+                        image, points,
+                        **config['augmentation']['params'].get(primitive, {}))
             return image[..., np.newaxis].astype(np.float32), points.astype(np.float32)
 
         if config['on-the-fly']:

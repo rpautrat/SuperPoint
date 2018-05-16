@@ -57,7 +57,10 @@ if __name__ == '__main__':
     # Warp the image
     H = sample_homography(tf.shape(image)[:2], **config['homographies'])
     warped_image = tf.contrib.image.transform(image, H, interpolation="BILINEAR")
-    warped_image = tf.image.resize_images(warped_image, tf.floordiv(shape, 2))
+    patch_ratio = config['homographies']['patch_ratio']
+    new_shape = tf.multiply(tf.cast(shape, tf.float32), patch_ratio)
+    new_shape = tf.cast(new_shape, tf.int32)
+    warped_image = tf.image.resize_images(warped_image, new_shape)
     H = invert_homography(H)
     H = flat2mat(H)[0, :, :]
 
@@ -74,7 +77,7 @@ if __name__ == '__main__':
 
         # Add scaling to adapt to the fact that the patch is
         # twice as small as the original image
-        homography[2, :] *= 2
+        homography[2, :] /= patch_ratio
 
         # Write the result in files
         cv.imwrite(str(Path(new_path, "1.jpg")), im)

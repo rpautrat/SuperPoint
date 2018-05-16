@@ -2,7 +2,7 @@ import tensorflow as tf
 
 from .base_model import BaseModel, Mode
 from .backbones.vgg import vgg_backbone
-from .utils import detector_head, homography_adaptation_batch, box_nms
+from .utils import detector_head, homography_adaptation, box_nms
 
 
 class MagicPoint(BaseModel):
@@ -12,6 +12,7 @@ class MagicPoint(BaseModel):
     required_config_keys = []
     default_config = {
             'data_format': 'channels_first',
+            'kernel_reg': 0.,
             'grid_size': 8,
             'detection_threshold': 0.4,
             'homography_adaptation': {'num': 0},
@@ -31,8 +32,7 @@ class MagicPoint(BaseModel):
             return outputs
 
         if (mode == Mode.PRED) and config['homography_adaptation']['num']:
-            outputs = homography_adaptation_batch(
-                    image, net, config['homography_adaptation'])
+            outputs = homography_adaptation(image, net, config['homography_adaptation'])
         else:
             outputs = net(image)
 

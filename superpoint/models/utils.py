@@ -6,15 +6,32 @@ from .backbones.vgg import vgg_block
 from superpoint.utils.tools import dict_update
 
 
+homography_adaptation_default_config = {
+        'num': 1,
+        'aggregation': 'sum',
+        'homographies': {
+            'translation': True,
+            'rotation': True,
+            'scaling': True,
+            'perspective': True,
+            'scaling_amplitude': 0.1,
+            'perspective_amplitude': 0.05,
+            'patch_ratio': 0.5,
+            'max_angle': pi,
+        },
+        'filter_counts': 0
+}
+
+
 def detector_head(inputs, **config):
     params_conv = {'padding': 'SAME', 'data_format': config['data_format'],
                    'activation': tf.nn.relu, 'batch_normalization': True,
-                   'training': config['training']}
+                   'training': config['training'], 'kernel_reg': config['kernel_reg']}
     cfirst = config['data_format'] == 'channels_first'
     cindex = 1 if cfirst else -1  # index of the channel
 
-    with tf.variable_scope('detector'):
-        x = vgg_block(inputs, 256, 3, 'conv1', **params_conv)
+    with tf.variable_scope('detector', reuse=tf.AUTO_REUSE):
+        x = vgg_block(inputs, config['descriptor_size'], 3, 'conv1', **params_conv)
         x = vgg_block(inputs, 1+pow(config['grid_size'], 2), 1, 'conv2', **params_conv)
 
         prob = tf.nn.softmax(x, axis=cindex)
@@ -25,6 +42,26 @@ def detector_head(inputs, **config):
         prob = tf.squeeze(prob, axis=cindex)
 
     return {'logits': x, 'prob': prob}
+
+
+def descriptor_head(inputs, **config):
+    params_conv = {'padding': 'SAME', 'data_format': config['data_format'],
+                   'activation': tf.nn.relu, 'batch_normalization': True,
+                   'training': config['training']}
+    cfirst = config['data_format'] == 'channels_first'
+    cindex = 1 if cfirst else -1  # index of the channel
+
+    with tf.variable_scope('descriptor', reuse=tf.AUTO_REUSE):
+        x = vgg_block(inputs, 256, 3, 'conv1', **params_conv)
+        x = vgg_block(inputs, config['descriptor_size'], 1, 'conv2', **params_conv)
+
+        desc = tf.transpose(x, [0, 2, 3, 1]) if cfirst else x
+        with tf.device('/cpu:0'):  # op not supported on GPU yet
+            desc = tf.image.resize_bicubic(x, config['grid_size'] * tf.shape(x)[1:3])
+        desc = tf.transpose(x, [0, 3, 1, 2]) if cfirst else desc
+        desc = tf.nn.l2_normalize(desc, cindex)
+
+    return {'descriptors_raw': x, 'descriptors': desc}
 
 
 def spatial_nms(prob, size):
@@ -75,34 +112,16 @@ def box_nms(prob, size, iou=0.1, min_prob=0.01, keep_top_k=0):
     return prob
 
 
-homography_adaptation_default_config = {
-        'num': 1,
-        'aggregation': 'sum',
-        'homographies': {
-            'translation': True,
-            'rotation': True,
-            'scaling': True,
-            'perspective': True,
-            'scaling_amplitude': 0.1,
-            'perspective_amplitude': 0.05,
-        },
-        'filter_counts': 0
-}
-
-
-def homography_adaptation(image, net, config, approximate_inverse=True):
+def homography_adaptation(image, net, config):
     """Perfoms homography adaptation.
-
     Inference using multiple random wrapped patches of the same input image for robust
     predictions.
-
     Arguments:
-        image: A `Tensor` with shape `[H, W, 1]`.
+        image: A `Tensor` with shape `[N, H, W, 1]`.
         net: A function that takes an image as input, performs inference, and outputs the
             prediction dictionary.
         config: A configuration dictionary containing optional entries such as the number
             of sampled homographies `'num'`, the aggregation method `'aggregation'`.
-
     Returns:
         A dictionary which contains the aggregated detection probabilities.
     """
@@ -111,11 +130,11 @@ def homography_adaptation(image, net, config, approximate_inverse=True):
     counts = tf.ones_like(probs)
     images = image
 
-    probs = tf.expand_dims(probs, axis=0)
-    counts = tf.expand_dims(counts, axis=0)
-    images = tf.expand_dims(images, axis=0)
+    probs = tf.expand_dims(probs, axis=-1)
+    counts = tf.expand_dims(counts, axis=-1)
+    images = tf.expand_dims(images, axis=-1)
 
-    shape = tf.shape(image)[:2]
+    shape = tf.shape(image)[1:3]
     config = dict_update(homography_adaptation_default_config, config)
 
     def step(i, probs, counts, images):
@@ -123,51 +142,20 @@ def homography_adaptation(image, net, config, approximate_inverse=True):
         H = sample_homography(shape, **config['homographies'])
         H_inv = invert_homography(H)
         wrapped = H_transform(image, H, interpolation='BILINEAR')
-        count = H_transform(tf.ones(shape), H_inv, interpolation='NEAREST')
+        count = H_transform(tf.expand_dims(tf.ones(tf.shape(image)[:3]), -1),
+                            H_inv, interpolation='NEAREST')[..., 0]
 
         # Predict detection probabilities
-        input_wrapped = tf.image.resize_images(wrapped, tf.floordiv(shape, 2))
+        warped_shape = tf.multiply(shape, config['homographies']['patch_ratio'])
+        input_wrapped = tf.image.resize_images(wrapped, warped_shape)
         prob = net(input_wrapped)['prob']
         prob = tf.image.resize_images(tf.expand_dims(prob, axis=-1), shape)[..., 0]
+        prob_proj = H_transform(tf.expand_dims(prob, -1), H_inv,
+                                interpolation='BILINEAR')[..., 0]
 
-        # In theory, directly inverting the probability map tends to discard many points
-        # with high probability. However experiments show that this is not an issue for
-        # a large number of homographies, and is 3 times faster than an exact inverse.
-        if approximate_inverse:
-            prob_proj = H_transform(prob, H_inv, interpolation='BILINEAR')
-        else:
-            # Select the points to be mapped back to the original image
-            pts = tf.where(tf.greater_equal(prob, 0.01))
-            selected_prob = tf.gather_nd(prob, pts)
-
-            # Compute the projected coordinates
-            pad = tf.ones(tf.stack([tf.shape(pts)[0], tf.constant(1)]))
-            pts_homogeneous = tf.concat([tf.reverse(tf.to_float(pts), axis=[1]), pad], 1)
-            pts_proj = tf.matmul(pts_homogeneous, tf.transpose(flat2mat(H)[0]))
-            pts_proj = pts_proj[:, :2] / tf.expand_dims(pts_proj[:, 2], axis=1)
-            pts_proj = tf.to_int32(tf.round(tf.reverse(pts_proj, axis=[1])))
-
-            # Hack: convert 2D coordinates to 1D indices in order to use tf.unique
-            pts_idx = pts_proj[:, 0] * shape[1] + pts_proj[:, 1]
-            pts_idx_unique, idx = tf.unique(pts_idx)
-
-            # Keep maximum corresponding probability for each projected point
-            # Hack: tf.segment_max requires sorted indices
-            idx, sort_idx = tf.nn.top_k(idx, k=tf.shape(idx)[0])
-            idx = tf.reverse(idx, axis=[0])
-            sort_idx = tf.reverse(sort_idx, axis=[0])
-            selected_prob = tf.gather(selected_prob, sort_idx)
-            with tf.device('/cpu:0'):
-                unique_prob = tf.segment_max(selected_prob, idx)
-
-            # Create final probability map
-            pts_proj_unique = tf.stack([tf.floordiv(pts_idx_unique, shape[1]),
-                                        tf.floormod(pts_idx_unique, shape[1])], axis=1)
-            prob_proj = tf.scatter_nd(pts_proj_unique, unique_prob, shape)
-
-        probs = tf.concat([probs, tf.expand_dims(prob_proj, 0)], axis=0)
-        counts = tf.concat([counts, tf.expand_dims(count, 0)], axis=0)
-        images = tf.concat([images, tf.expand_dims(wrapped, 0)], axis=0)
+        probs = tf.concat([probs, tf.expand_dims(prob_proj, -1)], axis=-1)
+        counts = tf.concat([counts, tf.expand_dims(count, -1)], axis=-1)
+        images = tf.concat([images, tf.expand_dims(wrapped, -1)], axis=-1)
         return i + 1, probs, counts, images
 
     _, probs, counts, images = tf.while_loop(
@@ -175,15 +163,16 @@ def homography_adaptation(image, net, config, approximate_inverse=True):
             step,
             [0, probs, counts, images],
             parallel_iterations=1,
+            back_prop=False,
             shape_invariants=[
                     tf.TensorShape([]),
-                    tf.TensorShape([None, None, None]),
-                    tf.TensorShape([None, None, None]),
-                    tf.TensorShape([None, None, None, 1])])
+                    tf.TensorShape([None, None, None, None]),
+                    tf.TensorShape([None, None, None, None]),
+                    tf.TensorShape([None, None, None, 1, None])])
 
-    counts = tf.reduce_sum(counts, axis=0)
-    max_prob = tf.reduce_max(probs, axis=0)
-    mean_prob = tf.reduce_sum(probs, axis=0) / counts
+    counts = tf.reduce_sum(counts, axis=-1)
+    max_prob = tf.reduce_max(probs, axis=-1)
+    mean_prob = tf.reduce_sum(probs, axis=-1) / counts
 
     if config['aggregation'] == 'max':
         prob = max_prob
@@ -200,33 +189,22 @@ def homography_adaptation(image, net, config, approximate_inverse=True):
             'mean_prob': mean_prob, 'input_images': images, 'H_probs': probs}  # debug
 
 
-def homography_adaptation_batch(images, net, config):
-    ha_dtype = {i: tf.float32
-                for i in ['prob', 'counts', 'mean_prob', 'input_images', 'H_probs']}
-
-    def net_single(image):
-        outputs = net(tf.expand_dims(image, axis=0))
-        return {k: v[0] for k, v in outputs.items()}
-
-    return tf.map_fn(lambda image: homography_adaptation(image, net_single, config),
-                     images, dtype=ha_dtype)
-
-
 def sample_homography(
         shape, perspective=True, scaling=True, rotation=True, translation=True,
-        n_scales=5, n_angles=16, scaling_amplitude=0.1, perspective_amplitude=0.1):
+        n_scales=5, n_angles=25, scaling_amplitude=0.1, perspective_amplitude=0.1,
+        patch_ratio=0.5, max_angle=pi):
     """Sample a random valid homography.
 
-    Computes the homography transformation between a random patch in the orignal image
-    and a wrapped projection with the same image size.
-    As in `tf.contrib.image.transform`, it maps the output point (wrapped patch) to a
-    transformed input point (orginal patch).
-    The original patch, which is intialized with a simple half-size centered crop, is
+    Computes the homography transformation between a random patch in the original image
+    and a warped projection with the same image size.
+    As in `tf.contrib.image.transform`, it maps the output point (warped patch) to a
+    transformed input point (original patch).
+    The original patch, which is initialized with a simple half-size centered crop, is
     iteratively projected, scaled, rotated and translated.
 
     Arguments:
         shape: A rank-2 `Tensor` specifying the height and width of the original image.
-        prespective: A boolean that enables the perspective and affine transformations.
+        perspective: A boolean that enables the perspective and affine transformations.
         scaling: A boolean that enables the random scaling of the patch.
         rotation: A boolean that enables the random rotation of the patch.
         translation: A boolean that enables the random translation of the patch.
@@ -240,11 +218,14 @@ def sample_homography(
     # Corners of the output image
     pts1 = tf.stack([[0., 0.], [0., 1.], [1., 1.], [1., 0.]], axis=0)
     # Corners of the input patch
-    pts2 = 0.25 + tf.constant([[0, 0], [0, 0.5], [0.5, 0.5], [0.5, 0]], tf.float32)
+    margin = (1 - patch_ratio) / 2
+    pts2 = margin + tf.constant([[0, 0], [0, patch_ratio],
+                                 [patch_ratio, patch_ratio], [patch_ratio, 0]],
+                                tf.float32)
 
     # Random perspective and affine perturbations
     if perspective:
-        pts2 += tf.truncated_normal([4, 2], 0., min(perspective_amplitude, 0.25)/2)
+        pts2 += tf.truncated_normal([4, 2], 0., min(perspective_amplitude, margin)/2)
 
     # Random scaling
     # sample several scales, check collision with borders, randomly pick a valid one
@@ -269,12 +250,13 @@ def sample_homography(
     # Random rotation
     # sample several rotations, check collision with borders, randomly pick a valid one
     if rotation:
-        angles = tf.lin_space(0., 2*tf.constant(pi), n_angles)
+        angles = tf.lin_space(tf.constant(-max_angle), tf.constant(max_angle), n_angles)
+        angles = tf.concat([[0.], angles], axis=0)  # in case no rotation is valid
         center = tf.reduce_mean(pts2, axis=0, keepdims=True)
         rot_mat = tf.reshape(tf.stack([tf.cos(angles), -tf.sin(angles), tf.sin(angles),
                                        tf.cos(angles)], axis=1), [-1, 2, 2])
         rotated = tf.matmul(
-                tf.tile(tf.expand_dims(pts2 - center, axis=0), [n_angles, 1, 1]),
+                tf.tile(tf.expand_dims(pts2 - center, axis=0), [n_angles+1, 1, 1]),
                 rot_mat) + center
         valid = tf.logical_and(tf.greater_equal(rotated, 0.), tf.less(rotated, 1.))
         valid = tf.where(tf.reduce_all(valid, axis=[1, 2]))
@@ -307,15 +289,115 @@ def invert_homography(H):
 def flat2mat(H):
     """
     Converts a flattened homography transformation with shape `[1, 8]` to its
-    corresponding homography matrix with shape `[1, 9, 9]`.
+    corresponding homography matrix with shape `[1, 3, 3]`.
     """
     return tf.reshape(tf.concat([H, tf.ones([tf.shape(H)[0], 1])], axis=1), [-1, 3, 3])
 
 
 def mat2flat(H):
     """
-    Converts an homography matrix with shape `[1, 9, 9]` to its corresponding flattened
+    Converts an homography matrix with shape `[1, 3, 3]` to its corresponding flattened
     homography transformation with shape `[1, 8]`.
     """
     H = tf.reshape(H, [-1, 9])
     return (H / H[:, 8:9])[:, :8]
+
+
+def warp_keypoints(keypoints, homography):
+    """
+    Warp a list of points with the INVERSE of the given homography.
+    The inverse is used to be coherent with tf.contrib.image.transform
+
+    Arguments:
+        keypoints: list of N points, shape (N, 2).
+        homography: batched or not (shapes (B, 8) and (8,) respectively).
+
+    Returns: a Tensor of shape (N, 2) or (B, N, 2) (depending on whether the homography
+            is batched) containing the new coordinates of the warped keypoints.
+    """
+    H = tf.expand_dims(homography, axis=0) if len(homography.shape) == 1 else homography
+
+    # Get the keypoints to the homogeneous format
+    n_keypoints = tf.shape(keypoints)[0]
+    keypoints = tf.cast(keypoints, tf.float32)[:, ::-1]
+    keypoints = tf.concat([keypoints, tf.ones([n_keypoints, 1], dtype=tf.float32)], -1)
+
+    # Apply the homography
+    H_inv = tf.transpose(flat2mat(invert_homography(H)))
+    warped_keypoints = tf.tensordot(keypoints, H_inv, [[1], [0]])
+    warped_keypoints = warped_keypoints[:, :2, :] / warped_keypoints[:, 2:, :]
+    warped_keypoints = tf.transpose(warped_keypoints, [2, 0, 1])[:, :, ::-1]
+
+    return warped_keypoints[0] if len(homography.shape) == 1 else warped_keypoints
+
+
+# TODO: cleanup the two following functions
+def warp_keypoints_to_list(packed_arg):
+    """
+    Warp a map of keypoints (pixel is 1 for a keypoint and 0 else) with
+    the INVERSE of the homography H.
+    The inverse is used to be coherent with tf.contrib.image.transform
+
+    Arguments:
+        packed_arg: a tuple equal to (keypoints_map, H)
+
+    Returns: a Tensor of size (num_keypoints, 2) with the new coordinates
+             of the warped keypoints.
+    """
+    keypoints_map = packed_arg[0]
+    H = packed_arg[1]
+    if len(H.shape.as_list()) < 2:
+        H = tf.expand_dims(H, 0)  # add a batch of 1
+    # Get the keypoints list in homogeneous format
+    keypoints = tf.cast(tf.where(keypoints_map > 0), tf.float32)
+    keypoints = keypoints[:, ::-1]
+    n_keypoints = tf.shape(keypoints)[0]
+    keypoints = tf.concat([keypoints, tf.ones([n_keypoints, 1], dtype=tf.float32)], 1)
+
+    # Apply the homography
+    H_inv = invert_homography(H)
+    H_inv = flat2mat(H_inv)
+    H_inv = tf.transpose(H_inv[0, ...])
+    warped_keypoints = tf.matmul(keypoints, H_inv)
+    warped_keypoints = tf.round(warped_keypoints[:, :2]
+                                / warped_keypoints[:, 2:])
+    warped_keypoints = warped_keypoints[:, ::-1]
+
+    return warped_keypoints
+
+
+def warp_keypoints_to_map(packed_arg):
+    """
+    Warp a map of keypoints (pixel is 1 for a keypoint and 0 else) with
+    the INVERSE of the homography H.
+    The inverse is used to be coherent with tf.contrib.image.transform
+
+    Arguments:
+        packed_arg: a tuple equal to (keypoints_map, H)
+
+    Returns: a map of keypoints of the same size as the original keypoint_map.
+    """
+    warped_keypoints = tf.to_int32(warp_keypoints_to_list(packed_arg))
+    n_keypoints = tf.shape(warped_keypoints)[0]
+    shape = tf.shape(packed_arg[0])
+
+    # Remove points outside the image
+    zeros = tf.cast(tf.zeros([n_keypoints]), dtype=tf.bool)
+    ones = tf.cast(tf.ones([n_keypoints]), dtype=tf.bool)
+    loc = tf.logical_and(tf.where(warped_keypoints[:, 0] >= 0, ones, zeros),
+                         tf.where(warped_keypoints[:, 0] < shape[0],
+                                  ones,
+                                  zeros))
+    loc = tf.logical_and(loc, tf.where(warped_keypoints[:, 1] >= 0, ones, zeros))
+    loc = tf.logical_and(loc,
+                         tf.where(warped_keypoints[:, 1] < shape[1],
+                                  ones,
+                                  zeros))
+    warped_keypoints = tf.boolean_mask(warped_keypoints, loc)
+
+    # Output the new map of keypoints
+    new_map = tf.scatter_nd(warped_keypoints,
+                            tf.ones([tf.shape(warped_keypoints)[0]], dtype=tf.float32),
+                            shape)
+
+    return new_map
