@@ -86,10 +86,12 @@ class Coco(BaseDataset):
 
         # Python function
         def _augmentation(image, points):
-            primitive = np.random.choice(config['augmentation']['primitives'])
-            image, points = getattr(daug, primitive)(
-                    image[:, :, 0], np.flip(points, -1),
-                    **config['augmentation']['params'].get(primitive, {}))
+            image = image[:, :, 0]
+            points = np.flip(points, -1)
+            for primitive in config['augmentation']['primitives']:
+                image, points = getattr(daug, primitive)(
+                        image, points,
+                        **config['augmentation']['params'].get(primitive, {}))
             return (image[..., np.newaxis].astype(np.float32),
                     np.flip(points, -1).astype(np.float32))
 

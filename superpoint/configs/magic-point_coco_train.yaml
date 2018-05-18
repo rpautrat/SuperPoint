@@ -4,26 +4,21 @@ data:
     cache_in_memory: true
     validation_size: 192
     augmentations:
-        enable: true
+        enable: false
         primitives: [
-            'additive_gaussian_noise',
-            'motion_blur',
-            'additive_speckle_noise',
-            'add_shade',
             'random_brightness',
             'random_contrast',
-            'elastic_transform']
+            'motion_blur',
+            'additive_gaussian_noise',
+            'additive_speckle_noise',
+            'add_shade']
         params:
-            motion_blur: {ksize: 7}
-            additive_gaussian_noise: {std: [3, 5]}
+            random_brightness: {max_change: 40}
+            random_contrast: {max_change: [0.5, 1.5]}
+            motion_blur: {ksize: 3}
+            additive_gaussian_noise: {std: [0, 8]}
             additive_speckle_noise: {intensity: 1}
-            random_brightness: {max_change: 50}
-            random_contrast: {max_change: [0.5, 1.7]}
-            add_shade: {transparency: 0.4}
-            elastic_transform:
-                sigma_params: [0.05, 0.05]
-                alpha_params: [0.5, 0.5]
-                padding: 2
+            add_shade: {amplitude: [-.5, .5], kernel_size_interval: [100, 150]}
 model:
     name: 'magic_point'
     batch_size: 32
