@@ -166,7 +166,10 @@ class BaseModel(metaclass=ABCMeta):
         elif mode == Mode.EVAL:
             return tower_metrics
         else:
-            return tower_preds
+            # Interleave the predictions of the towers
+            return {k: tf.stack(
+                [v for z in zip(*[tf.unstack(p[k], num=batch_size) for p in tower_preds])
+                 for v in z]) for k in tower_preds[0]}
 
     def _train_graph(self, data):
         tower_losses, tower_gradvars, update_ops = self._gpu_tower(
@@ -204,9 +207,7 @@ class BaseModel(metaclass=ABCMeta):
                             for m in tower_metrics[0]}
 
     def _pred_graph(self, data):
-        pred = self._gpu_tower(data, Mode.PRED, self.config['pred_batch_size'])
-        with tf.device('/cpu:0'):
-            self.pred_out = {k: tf.concat([v[k] for v in pred], axis=0) for k in pred[0]}
+        self.pred_out = self._gpu_tower(data, Mode.PRED, self.config['pred_batch_size'])
 
     def _build_graph(self):
         # Training and evaluation network, if tf datasets provided
