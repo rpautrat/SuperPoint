@@ -31,7 +31,7 @@ def detector_head(inputs, **config):
     cindex = 1 if cfirst else -1  # index of the channel
 
     with tf.variable_scope('detector', reuse=tf.AUTO_REUSE):
-        x = vgg_block(inputs, config['descriptor_size'], 3, 'conv1', **params_conv)
+        x = vgg_block(inputs, 256, 3, 'conv1', **params_conv)
         x = vgg_block(inputs, 1+pow(config['grid_size'], 2), 1, 'conv2', **params_conv)
 
         prob = tf.nn.softmax(x, axis=cindex)

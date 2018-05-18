@@ -28,15 +28,20 @@ if __name__ == '__main__':
     output_dir = Path(EXPER_PATH, 'outputs/{}/'.format(export_name))
     if not output_dir.exists():
         os.makedirs(output_dir)
-    checkpoint_dir = Path(EXPER_PATH, experiment_name)
+    checkpoint = Path(EXPER_PATH, experiment_name)
+    if 'checkpoint' in config:
+        checkpoint = Path(checkpoint, config['checkpoint'])
 
     config['model']['pred_batch_size'] = batch_size
     batch_size *= experiment.get_num_gpus()
 
     with experiment._init_graph(config, with_dataset=True) as (net, dataset):
         if net.trainable:
-            net.load(str(checkpoint_dir))
+            net.load(str(checkpoint))
         test_set = dataset.get_test_set()
+
+        for _ in tqdm(range(config.get('skip', 0))):
+            next(test_set)
 
         pbar = tqdm(total=config['eval_iter'] if config['eval_iter'] > 0 else None)
         i = 0
@@ -46,9 +51,10 @@ if __name__ == '__main__':
             try:
                 for _ in range(batch_size):
                     data.append(next(test_set))
-            except dataset.end_set:
+            except (StopIteration, dataset.end_set):
                 if not data:
                     break
+                data += [data[-1] for _ in range(batch_size - len(data))]  # add dummy
             data = dict(zip(data[0], zip(*[d.values() for d in data])))
 
             # Predict

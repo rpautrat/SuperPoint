@@ -103,9 +103,8 @@ class SyntheticShapes(BaseDataset):
         primitives = self.parse_primitives(config['primitives'], self.drawing_primitives)
 
         # Parse augmentation primitives
-        augmentations = self.parse_primitives(
+        config['augmentation']['primitives'] = self.parse_primitives(
                 config['augmentation']['primitives'], daug.augmentations)
-        config['augmentation']['primitives'] = augmentations + ['dummy']
 
         if config['on-the-fly']:
             return None
