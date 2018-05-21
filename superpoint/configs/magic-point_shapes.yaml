@@ -5,6 +5,7 @@ data:
     cache_in_memory: true
     validation_size: 500
     suffix: 'v5'
+    add_augmentation_to_test_set: false  # set to true to evaluate with noise
     preprocessing:
         blur_size: 21
         resize: [120, 160]
@@ -48,5 +49,6 @@ model:
 train_iter: 200000
 eval_iter: 200
 validation_interval: 1000
+seed: 0
 #save_interval: 5000
 #keep_checkpoints: 20

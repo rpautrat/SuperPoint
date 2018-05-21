@@ -1,10 +1,30 @@
 data:
     name: 'synthetic_shapes'
     primitive: 'all'
-    cache_in_memory: true
+    cache_in_memory: false
+    truncate: {draw_ellipses: 0.3, draw_stripes: 0.2, gaussian_noise: 0.1}
+    suffix: 'v5'
+    add_augmentation_to_test_set: false  # set to true to evaluate with noise
+    augmentation:
+        photometric:
+            enable: true
+            primitives: [
+                'random_brightness', 'random_contrast', 'additive_speckle_noise',
+                'additive_gaussian_noise', 'additive_shade', 'motion_blur' ]
+            params:
+                random_brightness: {max_abs_change: 75}
+                random_contrast: {strength_range: [0.3, 1.8]}
+                additive_gaussian_noise: {stddev_range: [0, 15]}
+                additive_speckle_noise: {prob_range: [0, 0.0035]}
+                additive_shade:
+                    transparency_range: [-0.5, 0.8]
+                    kernel_size_range: [50, 100]
+                motion_blur: {max_kernel_size: 7}
 model:
     name: 'classical_detectors'
     method: 'harris'  # 'shi' 'fast'
     batch_size: 50  # unused
     learning_rate: 0.001  # unused
-eval_iter: 500
+    nms: 4
+eval_iter: 200
+seed: 0
