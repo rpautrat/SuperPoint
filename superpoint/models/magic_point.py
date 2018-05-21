@@ -2,7 +2,8 @@ import tensorflow as tf
 
 from .base_model import BaseModel, Mode
 from .backbones.vgg import vgg_backbone
-from .utils import detector_head, homography_adaptation, box_nms
+from .utils import detector_head, detector_loss, box_nms
+from .homographies import homography_adaptation
 
 
 class MagicPoint(BaseModel):
@@ -48,27 +49,10 @@ class MagicPoint(BaseModel):
         return outputs
 
     def _loss(self, outputs, inputs, **config):
-        cfirst = config['data_format'] == 'channels_first'
-        cindex = 1 if cfirst else 3
-
-        # Convert the boolean labels to indices including the "no interest point" dustbin
-        labels = tf.cast(tf.expand_dims(inputs['keypoint_map'], axis=cindex), tf.float32)
-        labels = tf.space_to_depth(labels, config['grid_size'],
-                                   data_format='NCHW' if cfirst else 'NHWC')
-        shape = tf.shape(labels)
-        shape = tf.concat([shape[:cindex], [1], shape[cindex+1:]], axis=0)
-        labels = tf.concat([2*labels, tf.ones(shape)], cindex)  # hacky
-        labels = tf.argmax(labels, axis=cindex)
-
-        # Apply the cross entropy
-        # `spase_softmax_cross_entropy` seems to only supports channels last
-        logits = outputs['logits']
-        if cfirst:
-            logits = tf.transpose(logits, [0, 2, 3, 1])
-        loss = tf.reduce_mean(tf.losses.sparse_softmax_cross_entropy(
-                labels=labels, logits=logits))
-
-        return loss
+        if config['data_format'] == 'channels_first':
+            outputs['logits'] = tf.transpose(outputs['logits'], [0, 2, 3, 1])
+        return detector_loss(inputs['keypoint_map'], outputs['logits'],
+                             valid_mask=inputs['valid_mask'], **config)
 
     # TODO: add involved corner detector metrics
     def _metrics(self, outputs, inputs, **config):

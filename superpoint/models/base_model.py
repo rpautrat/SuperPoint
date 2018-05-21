@@ -121,14 +121,26 @@ class BaseModel(metaclass=ABCMeta):
         with tf.variable_scope(self.name, reuse=tf.AUTO_REUSE):
             self._build_graph()
 
+    def _unstack_nested_dict(self, d, num):
+        return {k: self._unstack_nested_dict(v, num) if isinstance(v, dict)
+                else tf.unstack(v, num=num, axis=0) for k, v in d.items()}
+
+    def _shard_nested_dict(self, d, num):
+        shards = [{} for _ in range(num)]
+        for k, v in d.items():
+            if isinstance(v, dict):
+                stack = self._shard_nested_dict(v, num)
+            else:
+                stack = [tf.stack(v[i::num]) for i in range(num)]
+            shards = [{**s, k: stack[i]} for i, s in enumerate(shards)]
+        return shards
+
     def _gpu_tower(self, data, mode, batch_size):
         # Split the batch between the GPUs (data parallelism)
         with tf.device('/cpu:0'):
             with tf.name_scope('{}_data_sharding'.format(mode)):
-                shards = {d: tf.unstack(v, num=batch_size*self.n_gpus, axis=0)
-                          for d, v in data.items()}
-                shards = [{d: tf.stack(v[i::self.n_gpus]) for d, v in shards.items()}
-                          for i in range(self.n_gpus)]
+                shards = self._unstack_nested_dict(data, batch_size*self.n_gpus)
+                shards = self._shard_nested_dict(shards, self.n_gpus)
 
         # Create towers, i.e. copies of the model for each GPU,
         # with their own loss and gradients.

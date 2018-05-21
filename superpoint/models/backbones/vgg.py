@@ -18,7 +18,8 @@ def vgg_block(inputs, filters, kernel_size, name, data_format, training=False,
 def vgg_backbone(inputs, **config):
     params_conv = {'padding': 'SAME', 'data_format': config['data_format'],
                    'activation': tf.nn.relu, 'batch_normalization': True,
-                   'training': config['training'], 'kernel_reg': config['kernel_reg']}
+                   'training': config['training'],
+                   'kernel_reg': config.get('kernel_reg', 0.)}
     params_pool = {'padding': 'SAME', 'data_format': config['data_format']}
 
     with tf.variable_scope('vgg', reuse=tf.AUTO_REUSE):
