@@ -3,22 +3,34 @@ data:
     labels: 'outputs/magic-point_synth-120-160_noise-motion_coco_homography-1_num-100_fcnt-4'
     cache_in_memory: true
     validation_size: 192
-    augmentations:
-        enable: false
-        primitives: [
-            'random_brightness',
-            'random_contrast',
-            'motion_blur',
-            'additive_gaussian_noise',
-            'additive_speckle_noise',
-            'add_shade']
-        params:
-            random_brightness: {max_change: 40}
-            random_contrast: {max_change: [0.5, 1.5]}
-            motion_blur: {ksize: 3}
-            additive_gaussian_noise: {std: [0, 8]}
-            additive_speckle_noise: {intensity: 1}
-            add_shade: {amplitude: [-.5, .5], kernel_size_interval: [100, 150]}
+    augmentation:
+        photometric:
+            enable: true
+            primitives: [
+                'random_brightness', 'random_contrast', 'additive_speckle_noise',
+                'additive_gaussian_noise', 'additive_shade', 'motion_blur' ]
+            params:
+                random_brightness: {max_abs_change: 50}
+                random_contrast: {strength_range: [0.3, 1.5]}
+                additive_gaussian_noise: {stddev_range: [0, 10]}
+                additive_speckle_noise: {prob_range: [0, 0.0035]}
+                additive_shade:
+                    transparency_range: [-0.5, 0.5]
+                    kernel_size_range: [100, 150]
+                motion_blur: {max_kernel_size: 3}
+        homographic:
+            enable: true
+            params:
+                translation: true
+                rotation: true
+                scaling: true
+                perspective: true
+                scaling_amplitude: 0.2
+                perspective_amplitude: 0.2
+                patch_ratio: 0.85
+                max_angle: 3.14
+                allow_artifacts: true
+            valid_border_margin: 3
 model:
     name: 'magic_point'
     batch_size: 32

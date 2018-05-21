@@ -1,32 +1,52 @@
 data:
     name: 'synthetic_shapes'
     primitives: 'all'
-    truncate: {draw_ellipses: 0.3, draw_stripes: 0.5, gaussian_noise: 0.3}
+    truncate: {draw_ellipses: 0.3, draw_stripes: 0.2, gaussian_noise: 0.1}
     cache_in_memory: true
     validation_size: 500
     suffix: 'v5'
     preprocessing:
         blur_size: 21
         resize: [120, 160]
-    augmentations:
-        enable: true
-        primitives: [
-            'random_brightness', 'additive_gaussian_noise',
-            'additive_speckle_noise', 'add_shade', 'motion_blur']
-        params:
-            additive_gaussian_noise: {std: [3, 12]}
-            motion_blur: {max_ksize: 7}
-            additive_speckle_noise: {intensity: 1}
-            add_shade: {amplitude: [-.5, .8], kernel_size_interval: [50, 100]}
-            random_brightness: {max_change: 75}
+    augmentation:
+        photometric:
+            enable: true
+            primitives: [
+                'random_brightness', 'random_contrast', 'additive_speckle_noise',
+                'additive_gaussian_noise', 'additive_shade', 'motion_blur' ]
+            params:
+                random_brightness: {max_abs_change: 75}
+                random_contrast: {strength_range: [0.3, 1.8]}
+                additive_gaussian_noise: {stddev_range: [0, 15]}
+                additive_speckle_noise: {prob_range: [0, 0.0035]}
+                additive_shade:
+                    transparency_range: [-0.5, 0.8]
+                    kernel_size_range: [50, 100]
+                motion_blur: {max_kernel_size: 7}
+        homographic:
+            enable: true
+            params:
+                translation: true
+                rotation: true
+                scaling: true
+                perspective: true
+                scaling_amplitude: 0.2
+                perspective_amplitude: 0.2
+                patch_ratio: 0.8
+                max_angle: 3.14
+                allow_artifacts: true
+                translation_overflow: 0.05
+            valid_border_margin: 2
 model:
     name: 'magic_point'
-    batch_size: 32
+    batch_size: 64
     eval_batch_size: 50
     learning_rate: 0.001
-    kernel_reg: 0.01
-train_iter: 100000
-eval_iter: 500
+    kernel_reg: 0.
+    detection_threshold: 0.015 # 1/65
+    nms: 4
+train_iter: 200000
+eval_iter: 200
 validation_interval: 1000
-save_interval: 5000
-keep_checkpoints: 20
+#save_interval: 5000
+#keep_checkpoints: 20
