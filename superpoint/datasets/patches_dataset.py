@@ -5,7 +5,7 @@ from pathlib import Path
 
 from .base_dataset import BaseDataset
 from .utils import pipeline
-from superpoint.models.utils import sample_homography
+from superpoint.models.homographies import sample_homography
 from superpoint.settings import DATA_PATH
 
 

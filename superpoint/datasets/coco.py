@@ -77,7 +77,7 @@ class Coco(BaseDataset):
 
         # Python function
         def _read_points(filename):
-            return np.load(filename.decode('utf-8'))['points'].astype(np.int32)
+            return np.load(filename.decode('utf-8'))['points'].astype(np.float32)
 
         names = tf.data.Dataset.from_tensor_slices(files['names'])
         images = tf.data.Dataset.from_tensor_slices(files['image_paths'])
@@ -88,7 +88,7 @@ class Coco(BaseDataset):
         # Add keypoints
         if has_keypoints:
             kp = tf.data.Dataset.from_tensor_slices(files['label_paths'])
-            kp = kp.map(lambda path: tf.py_func(_read_points, [path], tf.int32))
+            kp = kp.map(lambda path: tf.py_func(_read_points, [path], tf.float32))
             kp = kp.map(lambda points: tf.reshape(points, [-1, 2]))
             data = tf.data.Dataset.zip((data, kp)).map(
                     lambda d, k: {**d, 'keypoints': k})
