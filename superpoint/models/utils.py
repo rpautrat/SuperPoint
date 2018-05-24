@@ -60,9 +60,8 @@ def detector_loss(keypoint_map, logits, valid_mask=None, **config):
     valid_mask = tf.space_to_depth(valid_mask, config['grid_size'])
     valid_mask = tf.reduce_prod(valid_mask, axis=3)  # AND along the channel dim
 
-    loss = tf.losses.sparse_softmax_cross_entropy(labels=labels, logits=logits)
-    loss = tf.reduce_sum(valid_mask * loss) / tf.reduce_sum(valid_mask)
-    loss /= tf.to_float(tf.shape(logits)[-1])
+    loss = tf.losses.sparse_softmax_cross_entropy(
+            labels=labels, logits=logits, weights=valid_mask)
     return loss
 
 
