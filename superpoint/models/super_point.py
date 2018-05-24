@@ -78,7 +78,8 @@ class SuperPoint(BaseModel):
 
         # Compute the loss for the descriptor head
         descriptor_loss = utils.descriptor_loss(
-                descriptors, warped_descriptors, outputs['homography'], **config)
+                descriptors, warped_descriptors, outputs['homography'],
+                valid_mask=inputs['valid_mask'], **config)
 
         loss = (detector_loss + warped_detector_loss
                 + config['lambda_loss'] * descriptor_loss)

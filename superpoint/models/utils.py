@@ -66,7 +66,8 @@ def detector_loss(keypoint_map, logits, valid_mask=None, **config):
     return loss
 
 
-def descriptor_loss(descriptors, warped_descriptors, homographies, **config):
+def descriptor_loss(descriptors, warped_descriptors, homographies,
+                    valid_mask=None, **config):
     # Compute the position of the center pixel of every cell in the image
     (batch_size, Hc, Wc) = tf.unstack(tf.to_int32(tf.shape(descriptors)[:3]))
     coord_cells = tf.stack(tf.meshgrid(
@@ -105,7 +106,18 @@ def descriptor_loss(descriptors, warped_descriptors, homographies, **config):
     positive_dist = tf.maximum(0., config['positive_margin'] - dot_product_desc)
     negative_dist = tf.maximum(0., dot_product_desc - config['negative_margin'])
     loss = config['lambda_d'] * s * positive_dist + (1 - s) * negative_dist
-    return tf.reduce_mean(loss)
+
+    # Mask the pixels if bordering artifacts appear
+    valid_mask = tf.ones([batch_size, Hc, Wc], tf.float32)\
+        if valid_mask is None else valid_mask
+    valid_mask = tf.to_float(valid_mask[..., tf.newaxis])  # for GPU
+    valid_mask = tf.space_to_depth(valid_mask, config['grid_size'])
+    valid_mask = tf.reduce_prod(valid_mask, axis=3)  # AND along the channel dim
+    valid_mask = tf.reshape(valid_mask, [batch_size, 1, 1, Hc, Wc])
+
+    normalization = tf.reduce_sum(valid_mask) * tf.reduce_sum(valid_mask) / batch_size
+    loss = tf.reduce_sum(valid_mask * loss) / normalization
+    return loss
 
 
 def spatial_nms(prob, size):
