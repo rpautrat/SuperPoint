@@ -114,7 +114,7 @@ def descriptor_loss(descriptors, warped_descriptors, homographies,
     valid_mask = tf.reduce_prod(valid_mask, axis=3)  # AND along the channel dim
     valid_mask = tf.reshape(valid_mask, [batch_size, 1, 1, Hc, Wc])
 
-    normalization = tf.reduce_sum(valid_mask) * tf.reduce_sum(valid_mask) / batch_size
+    normalization = tf.reduce_sum(valid_mask) * Hc * Wc
     loss = tf.reduce_sum(valid_mask * loss) / normalization
     return loss
 
