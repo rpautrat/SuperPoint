@@ -9,7 +9,8 @@ import shutil
 
 from .base_dataset import BaseDataset
 from superpoint.datasets import synthetic_dataset
-from superpoint.datasets.utils import augmentation as daug
+from .utils import pipeline
+from .utils.pipeline import parse_primitives
 from superpoint.settings import DATA_PATH
 
 
@@ -22,6 +23,8 @@ class SyntheticShapes(BaseDataset):
             'on-the-fly': False,
             'cache_in_memory': False,
             'suffix': None,
+            'add_augmentation_to_test_set': False,
+            'num_parallel_calls': 10,
             'generation': {
                 'split_sizes': {'training': 10000, 'validation': 200, 'test': 500},
                 'image_size': [960, 1280],
@@ -39,9 +42,17 @@ class SyntheticShapes(BaseDataset):
                 'blur_size': 11,
             },
             'augmentation': {
-                'enable': False,
-                'primitives': 'all',
-                'params': {}
+                'photometric': {
+                    'enable': False,
+                    'primitives': 'all',
+                    'params': {},
+                    'random_order': True,
+                },
+                'homographic': {
+                    'enable': False,
+                    'params': {},
+                    'valid_border_margin': 0,
+                },
             }
     }
     drawing_primitives = [
@@ -55,12 +66,6 @@ class SyntheticShapes(BaseDataset):
             'draw_cube',
             'gaussian_noise'
     ]
-
-    def parse_primitives(self, names, all_primitives):
-        p = all_primitives if (names == 'all') \
-                else (names if isinstance(names, list) else [names])
-        assert set(p) <= set(all_primitives)
-        return p
 
     def dump_primitive_data(self, primitive, tar_path, config):
         temp_dir = Path(os.environ['TMPDIR'], primitive)
@@ -100,11 +105,10 @@ class SyntheticShapes(BaseDataset):
 
     def _init_dataset(self, **config):
         # Parse drawing primitives
-        primitives = self.parse_primitives(config['primitives'], self.drawing_primitives)
+        primitives = parse_primitives(config['primitives'], self.drawing_primitives)
 
-        # Parse augmentation primitives
-        config['augmentation']['primitives'] = self.parse_primitives(
-                config['augmentation']['primitives'], daug.augmentations)
+        tf.data.Dataset.map_parallel = lambda self, fn: self.map(
+                fn, num_parallel_calls=config['num_parallel_calls'])
 
         if config['on-the-fly']:
             return None
@@ -146,8 +150,7 @@ class SyntheticShapes(BaseDataset):
     def _get_data(self, filenames, split_name, **config):
 
         def _gen_shape():
-            primitives = self.parse_primitives(
-                    config['primitives'], self.drawing_primitives)
+            primitives = parse_primitives(config['primitives'], self.drawing_primitives)
             while True:
                 primitive = np.random.choice(primitives)
                 image = synthetic_dataset.generate_background(
@@ -167,52 +170,13 @@ class SyntheticShapes(BaseDataset):
         def _read_points(filename):
             return np.load(filename.decode('utf-8')).astype(np.float32)
 
-        def _downsample(image, coordinates):
-            with tf.name_scope('gaussian_blur'):
-                k_size = config['preprocessing']['blur_size']
-                kernel = cv2.getGaussianKernel(k_size, 0)[:, 0]
-                kernel = np.outer(kernel, kernel).astype(np.float32)
-                kernel = tf.reshape(tf.convert_to_tensor(kernel), [k_size]*2+[1, 1])
-                pad_size = int(k_size/2)
-                image = tf.pad(image, [[pad_size]*2, [pad_size]*2, [0, 0]], 'REFLECT')
-                image = tf.expand_dims(image, axis=0)  # add batch dim
-                image = tf.nn.depthwise_conv2d(image, kernel, [1, 1, 1, 1], 'VALID')[0]
-
-            ratio = tf.divide(tf.convert_to_tensor(config['preprocessing']['resize']),
-                              tf.shape(image)[0:2])
-            coordinates = coordinates * tf.cast(ratio, tf.float32)
-            image = tf.image.resize_images(image, config['preprocessing']['resize'],
-                                           method=tf.image.ResizeMethod.BILINEAR)
-            return image, coordinates
-
-        def _coordinates_to_kmap(image, coordinates):
-            # Round and clip to image size
-            coordinates = tf.to_int32(tf.round(coordinates))
-            coordinates = tf.minimum(coordinates,
-                                     tf.expand_dims(tf.stack([tf.shape(image)[0]-1,
-                                                              tf.shape(image)[1]-1]),
-                                                    axis=0))
-            kmap = tf.scatter_nd(
-                    coordinates,
-                    tf.ones([tf.shape(coordinates)[0]], dtype=tf.int32),
-                    tf.shape(image)[:2])
-            return image, kmap
-
-        # Python function
-        def _augmentation(image, points):
-            image = image[:, :, 0]
-            for primitive in config['augmentation']['primitives']:
-                image, points = getattr(daug, primitive)(
-                        image, points,
-                        **config['augmentation']['params'].get(primitive, {}))
-            return image[..., np.newaxis].astype(np.float32), points.astype(np.float32)
-
         if config['on-the-fly']:
             data = tf.data.Dataset.from_generator(
                     _gen_shape, (tf.float32, tf.float32),
                     (tf.TensorShape(config['generation']['image_size']+[1]),
                      tf.TensorShape([None, 2])))
-            data = data.map(_downsample)
+            data = data.map(lambda i, c: pipeline.downsample(
+                    i, c, **config['preprocessing']))
         else:
             # Initialize dataset with file names
             data = tf.data.Dataset.from_tensor_slices(
@@ -228,18 +192,23 @@ class SyntheticShapes(BaseDataset):
         elif split_name == 'test':
             data = data.take(config['test_size'])
 
+        data = data.map(lambda image, kp: {'image': image, 'keypoints': kp})
+        data = data.map(pipeline.add_dummy_valid_mask)
+
         if config['cache_in_memory'] and not config['on-the-fly']:
             tf.logging.info('Caching data, fist access will take some time.')
             data = data.cache()
 
-        if split_name == 'training' and config['augmentation']['enable']:
-            data = data.map(
-                    lambda image, points: tuple(tf.py_func(
-                        _augmentation, [image, points], [tf.float32, tf.float32])))
-            data = data.map(lambda image, points: (image, tf.reshape(points, [-1, 2])))
+        # Apply augmentation
+        if split_name == 'training' or config['add_augmentation_to_test_set']:
+            if config['augmentation']['photometric']['enable']:
+                data = data.map_parallel(lambda d: pipeline.photometric_augmentation(
+                    d, **config['augmentation']['photometric']))
+            if config['augmentation']['homographic']['enable']:
+                data = data.map_parallel(lambda d: pipeline.homographic_augmentation(
+                    d, **config['augmentation']['homographic']))
 
-        # Convert point coordinates to a dense keypoint map
-        data = data.map(_coordinates_to_kmap)
-        data = data.map(lambda image, kmap: {'image': image, 'keypoint_map': kmap})
+        # Convert the point coordinates to a dense keypoint map
+        data = data.map_parallel(pipeline.add_keypoint_map)
 
         return data

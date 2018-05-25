@@ -1,8 +1,38 @@
 data:
     name: 'coco'
     cache_in_memory: true
-    validation_size: 192
+    validation_size: 96
     labels: 'null'  # Complete
+    augmentation:
+        photometric:
+            enable: true
+            primitives: [
+                'random_brightness', 'random_contrast', 'additive_speckle_noise',
+                'additive_gaussian_noise', 'additive_shade', 'motion_blur']
+            params:
+                random_brightness: {max_abs_change: 50}
+                random_contrast: {strength_range: [0.5, 1.5]}
+                additive_gaussian_noise: {stddev_range: [0, 10]}
+                additive_speckle_noise: {prob_range: [0, 0.0035]}
+                additive_shade:
+                    transparency_range: [-0.5, 0.5]
+                    kernel_size_range: [100, 150]
+                motion_blur: {max_kernel_size: 3}
+        homographic:
+            enable: false  # not implemented
+    warped_pair:
+        enable: true
+        params:
+            translation: true
+            rotation: true
+            scaling: true
+            perspective: true
+            scaling_amplitude: 0.25
+            perspective_amplitude: 0.20
+            patch_ratio: 0.75
+            max_angle: 0.75
+            allow_artifacts: true
+        valid_border_margin: 2
 model:
     name: 'super_point'
     batch_size: 3
@@ -15,14 +45,6 @@ model:
     detection_threshold: 0.015 # 1/65
     nms: 4
     top_k: 300
-    homography_sampling:
-        translation: true
-        rotation: true
-        scaling: true
-        perspective: true
-        scaling_amplitude: 0.1
-        perspective_amplitude: 0.05
-        patch_ratio: 0.75
-        max_angle: 3.14
 train_iter: 100000
+validation_interval: 3000
 eval_iter: 50
