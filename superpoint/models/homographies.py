@@ -139,7 +139,9 @@ def sample_homography(
     if perspective:
         if not allow_artifacts:
             perspective_amplitude = min(perspective_amplitude, margin)
-        pts2 += tf.truncated_normal([4, 2], 0., perspective_amplitude/2)
+        pts2 += tf.concat([tf.truncated_normal([4, 1], 0., perspective_amplitude/2),
+                           tf.truncated_normal([4, 1], 0., perspective_amplitude/3)],
+                          axis=1)
 
     # Random scaling
     # sample several scales, check collision with borders, randomly pick a valid one
