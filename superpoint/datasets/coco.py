@@ -3,7 +3,7 @@ import tensorflow as tf
 from pathlib import Path
 
 from .base_dataset import BaseDataset
-from superpoint.datasets.utils import augmentation as daug
+from .utils import pipeline
 from superpoint.settings import DATA_PATH, EXPER_PATH
 
 
@@ -16,23 +16,28 @@ class Coco(BaseDataset):
         'preprocessing': {
             'resize': [240, 320]
         },
+        'num_parallel_calls': 10,
         'augmentation': {
+            'photometric': {
+                'enable': False,
+                'primitives': 'all',
+                'params': {},
+                'random_order': True,
+            },
+            'homographic': {
+                'enable': False,
+                'params': {},
+                'valid_border_margin': 0,
+            },
+        },
+        'warped_pair': {
             'enable': False,
-            'primitives': 'all',
             'params': {},
-        }
+            'valid_border_margin': 0,
+        },
     }
 
-    def parse_primitives(self, names, all_primitives):
-        p = all_primitives if (names == 'all') \
-                else (names if isinstance(names, list) else [names])
-        assert set(p) <= set(all_primitives)
-        return p
-
     def _init_dataset(self, **config):
-        config['augmentation']['primitives'] = self.parse_primitives(
-                config['augmentation']['primitives'], daug.augmentations)
-
         base_path = Path(DATA_PATH, 'COCO/train2014/')
         image_paths = list(base_path.iterdir())
         if config['truncate']:
@@ -49,49 +54,30 @@ class Coco(BaseDataset):
                 label_paths.append(str(p))
             files['label_paths'] = label_paths
 
+        tf.data.Dataset.map_parallel = lambda self, fn: self.map(
+                fn, num_parallel_calls=config['num_parallel_calls'])
+
         return files
 
     def _get_data(self, files, split_name, **config):
+        has_keypoints = 'label_paths' in files
+        is_training = split_name == 'training'
 
         def _read_image(path):
             image = tf.read_file(path)
             image = tf.image.decode_png(image, channels=3)
             return image
 
-        def _scale_preserving_resize(image):
-            target_size = tf.convert_to_tensor(config['preprocessing']['resize'])
-            scales = tf.to_float(tf.divide(target_size, tf.shape(image)[:2]))
-            new_size = tf.to_float(tf.shape(image)[:2]) * tf.reduce_max(scales)
-            image = tf.image.resize_images(image, tf.to_int32(new_size),
-                                           method=tf.image.ResizeMethod.BILINEAR)
-            return tf.image.resize_image_with_crop_or_pad(image, target_size[0],
-                                                          target_size[1])
-
         def _preprocess(image):
             image = tf.image.rgb_to_grayscale(image)
             if config['preprocessing']['resize']:
-                image = _scale_preserving_resize(image)
+                image = pipeline.ratio_preserving_resize(image,
+                                                         **config['preprocessing'])
             return image
 
         # Python function
         def _read_points(filename):
-            return np.load(filename.decode('utf-8'))['points'].astype(np.int32)
-
-        def _add_keypoint_map(data):
-            kp = tf.to_int32(tf.round(data['keypoints']))
-            kmap = tf.scatter_nd(
-                    kp, tf.ones([tf.shape(kp)[0]], dtype=tf.int32),
-                    tf.shape(data['image'])[:2])
-            return {**data, **{'keypoint_map': kmap}}
-
-        # Python function
-        def _augmentation(image, points):
-            primitive = np.random.choice(config['augmentation']['primitives'])
-            image, points = getattr(daug, primitive)(
-                    image[:, :, 0], np.flip(points, -1),
-                    **config['augmentation']['params'].get(primitive, {}))
-            return (image[..., np.newaxis].astype(np.float32),
-                    np.flip(points, -1).astype(np.float32))
+            return np.load(filename.decode('utf-8'))['points'].astype(np.float32)
 
         names = tf.data.Dataset.from_tensor_slices(files['names'])
         images = tf.data.Dataset.from_tensor_slices(files['image_paths'])
@@ -100,12 +86,13 @@ class Coco(BaseDataset):
         data = tf.data.Dataset.zip({'image': images, 'name': names})
 
         # Add keypoints
-        if 'label_paths' in files:
+        if has_keypoints:
             kp = tf.data.Dataset.from_tensor_slices(files['label_paths'])
-            kp = kp.map(lambda path: tf.py_func(_read_points, [path], tf.int32))
+            kp = kp.map(lambda path: tf.py_func(_read_points, [path], tf.float32))
             kp = kp.map(lambda points: tf.reshape(points, [-1, 2]))
             data = tf.data.Dataset.zip((data, kp)).map(
-                    lambda d, k: {**d, **{'keypoints': k}})
+                    lambda d, k: {**d, 'keypoints': k})
+            data = data.map(pipeline.add_dummy_valid_mask)
 
         # Keep only the first elements for validation
         if split_name == 'validation':
@@ -116,19 +103,31 @@ class Coco(BaseDataset):
             tf.logging.info('Caching data, fist access will take some time.')
             data = data.cache()
 
+        # Generate the warped pair
+        if config['warped_pair']['enable']:
+            assert has_keypoints
+            warped = data.map_parallel(lambda d: pipeline.homographic_augmentation(
+                d, add_homography=True, **config['warped_pair']))
+            if is_training and config['augmentation']['photometric']['enable']:
+                warped = warped.map_parallel(lambda d: pipeline.photometric_augmentation(
+                    d, **config['augmentation']['photometric']))
+            warped = warped.map_parallel(pipeline.add_keypoint_map)
+            # Merge with the original data
+            data = tf.data.Dataset.zip((data, warped))
+            data = data.map(lambda d, w: {**d, 'warped': w})
+
         # Data augmentation
-        if config['augmentation']['enable'] and 'label_paths' in files \
-                and split_name == 'training':
-            augmented = data.map(
-                    lambda d: tuple(tf.py_func(_augmentation,
-                                               [d['image'], d['keypoints']],
-                                               [tf.float32, tf.float32])))
-            augmented = augmented.map(lambda i, k: (i, tf.reshape(k, [-1, 2])))
-            data = tf.data.Dataset.zip((data, augmented)).map(
-                    lambda d, a: {**d, **dict(zip(('image', 'keypoints'), a))})
+        if has_keypoints and is_training:
+            if config['augmentation']['photometric']['enable']:
+                data = data.map_parallel(lambda d: pipeline.photometric_augmentation(
+                    d, **config['augmentation']['photometric']))
+            if config['augmentation']['homographic']['enable']:
+                assert not config['warped_pair']['enable']  # doesn't support hom. aug.
+                data = data.map_parallel(lambda d: pipeline.homographic_augmentation(
+                    d, **config['augmentation']['homographic']))
 
         # Generate the keypoint map
-        if 'label_paths' in files:
-            data = data.map(_add_keypoint_map)
+        if has_keypoints:
+            data = data.map_parallel(pipeline.add_keypoint_map)
 
         return data

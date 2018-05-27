@@ -20,7 +20,7 @@ def compute_tp_fp(data, remove_zero=1e-4, distance_thresh=2, simplified=False):
     gt = np.where(data['keypoint_map'])
     gt = np.stack([gt[0], gt[1]], axis=-1)
     n_gt = len(gt)
-    prob = data['prob']
+    prob = data['prob_nms'] if 'prob_nms' in data.files else data['prob']
 
     # Filter out predictions with near-zero probability
     mask = np.where(prob > remove_zero)

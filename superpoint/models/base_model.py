@@ -121,14 +121,26 @@ class BaseModel(metaclass=ABCMeta):
         with tf.variable_scope(self.name, reuse=tf.AUTO_REUSE):
             self._build_graph()
 
+    def _unstack_nested_dict(self, d, num):
+        return {k: self._unstack_nested_dict(v, num) if isinstance(v, dict)
+                else tf.unstack(v, num=num, axis=0) for k, v in d.items()}
+
+    def _shard_nested_dict(self, d, num):
+        shards = [{} for _ in range(num)]
+        for k, v in d.items():
+            if isinstance(v, dict):
+                stack = self._shard_nested_dict(v, num)
+            else:
+                stack = [tf.stack(v[i::num]) for i in range(num)]
+            shards = [{**s, k: stack[i]} for i, s in enumerate(shards)]
+        return shards
+
     def _gpu_tower(self, data, mode, batch_size):
         # Split the batch between the GPUs (data parallelism)
         with tf.device('/cpu:0'):
             with tf.name_scope('{}_data_sharding'.format(mode)):
-                shards = {d: tf.unstack(v, num=batch_size*self.n_gpus, axis=0)
-                          for d, v in data.items()}
-                shards = [{d: tf.stack(v[i::self.n_gpus]) for d, v in shards.items()}
-                          for i in range(self.n_gpus)]
+                shards = self._unstack_nested_dict(data, batch_size*self.n_gpus)
+                shards = self._shard_nested_dict(shards, self.n_gpus)
 
         # Create towers, i.e. copies of the model for each GPU,
         # with their own loss and gradients.
@@ -166,7 +178,10 @@ class BaseModel(metaclass=ABCMeta):
         elif mode == Mode.EVAL:
             return tower_metrics
         else:
-            return tower_preds
+            # Interleave the predictions of the towers
+            return {k: tf.stack(
+                [v for z in zip(*[tf.unstack(p[k], num=batch_size) for p in tower_preds])
+                 for v in z]) for k in tower_preds[0]}
 
     def _train_graph(self, data):
         tower_losses, tower_gradvars, update_ops = self._gpu_tower(
@@ -204,9 +219,7 @@ class BaseModel(metaclass=ABCMeta):
                             for m in tower_metrics[0]}
 
     def _pred_graph(self, data):
-        pred = self._gpu_tower(data, Mode.PRED, self.config['pred_batch_size'])
-        with tf.device('/cpu:0'):
-            self.pred_out = {k: tf.concat([v[k] for v in pred], axis=0) for k in pred[0]}
+        self.pred_out = self._gpu_tower(data, Mode.PRED, self.config['pred_batch_size'])
 
     def _build_graph(self):
         # Training and evaluation network, if tf datasets provided
