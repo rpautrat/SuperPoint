@@ -26,11 +26,13 @@ if __name__ == '__main__':
     output_dir = Path(EXPER_PATH, 'outputs/{}/'.format(export_name))
     if not output_dir.exists():
         os.makedirs(output_dir)
-    checkpoint_dir = Path(EXPER_PATH, experiment_name)
+    checkpoint = Path(EXPER_PATH, experiment_name)
+    if 'checkpoint' in config:
+        checkpoint = Path(checkpoint, config['checkpoint'])
 
     with experiment._init_graph(config, with_dataset=True) as (net, dataset):
         if net.trainable:
-            net.load(str(checkpoint_dir))
+            net.load(str(checkpoint))
         test_set = dataset.get_test_set()
 
         pbar = tqdm(total=config['eval_iter'] if config['eval_iter'] > 0 else None)
