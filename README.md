@@ -2,8 +2,9 @@
 
 This is a Tensorflow implementation of  "SuperPoint: Self-Supervised Interest Point Detection and Description." Daniel DeTone, Tomasz Malisiewicz, Andrew Rabinovich. [ArXiv 2018](https://arxiv.org/abs/1712.07629).
 
-![hp-v_200_2](doc/hp-v_200.png)
-![hp-v_200_2](doc/hp-v_235.png)
+![hp-v_200](doc/hp-v_200.png)
+![hp-v_235](doc/hp-v_235.png)
+![hp-v_280](doc/hp-v_280.png)
 
 **NOTE**: this work is still in progress. Although we match the results of the original paper for illumination changes, more experiments are required to 1) improve the robustness to viewpoint changes, and 2) train the descriptor. **We provide a temporary Tensorflow SavedModel of MagicPoint in `superpoint/saved_models/`.**
 
