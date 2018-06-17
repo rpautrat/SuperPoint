@@ -1,0 +1,28 @@
+data:
+    name: 'patches_dataset'
+    dataset: 'hpatches'  # 'coco' 'hpatches'
+    alteration: 'i'  # 'all' 'i' 'v'
+    preprocessing:
+        resize: [480, 640]  # False for coco
+model:
+    name: 'super_point'
+    data_format: 'channels_last'
+    batch_size: 50
+    eval_batch_size: 50
+    learning_rate: 0.001
+    detection_threshold: 0.001 # 1/65
+    nms: 4
+    top_k: 1000
+    homography_adaptation:
+        num: 0
+        aggregation: 'sum'
+        filter_counts: 10
+        homographies:
+            translation: true
+            rotation: true
+            scaling: true
+            perspective: true
+            scaling_amplitude: 0.1
+            perspective_amplitude: 0.05
+eval_iter: 600
+seed: 1

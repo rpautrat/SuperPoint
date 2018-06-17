@@ -1,7 +1,7 @@
 data:
     name: 'coco'
-    labels: 'outputs/magic-point_synth-120-160_noise-motion_coco_homography-1_num-100_fcnt-4'
-    cache_in_memory: true
+    labels: null # Complete with your export labels
+    cache_in_memory: false
     validation_size: 192
     augmentation:
         photometric:
@@ -27,7 +27,7 @@ data:
                 perspective: true
                 scaling_amplitude: 0.2
                 perspective_amplitude_x: 0.4
-		perspective_amplitude_y: 0.3
+                perspective_amplitude_y: 0.3
                 patch_ratio: 0.85
                 max_angle: 3.14
                 allow_artifacts: true
@@ -40,5 +40,5 @@ model:
     detection_threshold: 0.015 # 1/65
     nms: 4
     top_k: 300
-train_iter: 500000
+train_iter: 200000
 validation_interval: 1000
