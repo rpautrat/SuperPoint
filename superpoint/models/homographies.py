@@ -15,7 +15,8 @@ homography_adaptation_default_config = {
             'scaling': True,
             'perspective': True,
             'scaling_amplitude': 0.1,
-            'perspective_amplitude': 0.05,
+            'perspective_amplitude_x': 0.2,
+            'perspective_amplitude_y': 0.1,
             'patch_ratio': 0.5,
             'max_angle': pi,
         },
@@ -103,8 +104,9 @@ def homography_adaptation(image, net, config):
 
 def sample_homography(
         shape, perspective=True, scaling=True, rotation=True, translation=True,
-        n_scales=5, n_angles=25, scaling_amplitude=0.1, perspective_amplitude=0.1,
-        patch_ratio=0.5, max_angle=pi, allow_artifacts=False, translation_overflow=0.):
+        n_scales=5, n_angles=25, scaling_amplitude=0.1, perspective_amplitude_x=0.2,
+        perspective_amplitude_y=0.1, patch_ratio=0.5, max_angle=pi,
+        allow_artifacts=False, translation_overflow=0.):
     """Sample a random valid homography.
 
     Computes the homography transformation between a random patch in the original image
@@ -138,8 +140,11 @@ def sample_homography(
     # Random perspective and affine perturbations
     if perspective:
         if not allow_artifacts:
-            perspective_amplitude = min(perspective_amplitude, margin)
-        pts2 += tf.truncated_normal([4, 2], 0., perspective_amplitude/2)
+            perspective_amplitude_x = min(perspective_amplitude_x, margin)
+            perspective_amplitude_y = min(perspective_amplitude_y, margin)
+        pts2 += tf.concat([tf.truncated_normal([4, 1], 0., perspective_amplitude_x/2),
+                           tf.truncated_normal([4, 1], 0., perspective_amplitude_y/2)],
+                          axis=1)
 
     # Random scaling
     # sample several scales, check collision with borders, randomly pick a valid one
