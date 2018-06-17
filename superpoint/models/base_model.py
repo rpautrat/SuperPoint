@@ -219,7 +219,8 @@ class BaseModel(metaclass=ABCMeta):
                             for m in tower_metrics[0]}
 
     def _pred_graph(self, data):
-        self.pred_out = self._gpu_tower(data, Mode.PRED, self.config['pred_batch_size'])
+        pred_out = self._gpu_tower(data, Mode.PRED, self.config['pred_batch_size'])
+        self.pred_out = {n: tf.identity(p, name=n) for n, p in pred_out.items()}
 
     def _build_graph(self):
         # Training and evaluation network, if tf datasets provided
@@ -267,7 +268,7 @@ class BaseModel(metaclass=ABCMeta):
         # Prediction network with feed_dict
         if self.data_shape is None:
             self.data_shape = {i: spec['shape'] for i, spec in self.input_spec.items()}
-        self.pred_in = {i: tf.placeholder(spec['type'], shape=self.data_shape[i])
+        self.pred_in = {i: tf.placeholder(spec['type'], shape=self.data_shape[i], name=i)
                         for i, spec in self.input_spec.items()}
         self._pred_graph(self.pred_in)
 
