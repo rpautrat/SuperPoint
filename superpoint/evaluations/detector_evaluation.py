@@ -157,7 +157,7 @@ def compute_repeatability(exper_name, keep_k_points=300,
 
     def keep_true_keypoints(points, H, shape):
         """ Keep only the points whose warped coordinates by H
-        are still inside shape.. """
+        are still inside shape. """
         warped_points = warp_keypoints(points[:, [1, 0]], H)
         warped_points[:, [0, 1]] = warped_points[:, [1, 0]]
         mask = (warped_points[:, 0] >= 0) & (warped_points[:, 0] < shape[0]) &\
@@ -189,7 +189,6 @@ def compute_repeatability(exper_name, keep_k_points=300,
         warped_keypoints = np.stack([warped_keypoints[0],
                                      warped_keypoints[1],
                                      warped_prob], axis=-1)
-        warped_keypoints = select_k_best(warped_keypoints, keep_k_points)  # TODO
         warped_keypoints = keep_true_keypoints(warped_keypoints, np.linalg.inv(H),
                                                data['prob'].shape)
 
@@ -198,12 +197,11 @@ def compute_repeatability(exper_name, keep_k_points=300,
         true_warped_keypoints = np.stack([true_warped_keypoints[:, 1],
                                           true_warped_keypoints[:, 0],
                                           prob], axis=-1)
-        true_warped_keypoints = select_k_best(true_warped_keypoints, keep_k_points)  # TODO
         true_warped_keypoints = filter_keypoints(true_warped_keypoints, shape)
 
         # Keep only the keep_k_points best predictions
-        # warped_keypoints = select_k_best(warped_keypoints, keep_k_points)
-        # true_warped_keypoints = select_k_best(true_warped_keypoints, keep_k_points)
+        warped_keypoints = select_k_best(warped_keypoints, keep_k_points)
+        true_warped_keypoints = select_k_best(true_warped_keypoints, keep_k_points)
 
         # Compute the repeatability
         N1 = true_warped_keypoints.shape[0]

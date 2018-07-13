@@ -15,7 +15,7 @@ homography_adaptation_default_config = {
             'scaling': True,
             'perspective': True,
             'scaling_amplitude': 0.1,
-            'perspective_amplitude_x': 0.2,
+            'perspective_amplitude_x': 0.1,
             'perspective_amplitude_y': 0.1,
             'patch_ratio': 0.5,
             'max_angle': pi,
@@ -104,8 +104,8 @@ def homography_adaptation(image, net, config):
 
 def sample_homography(
         shape, perspective=True, scaling=True, rotation=True, translation=True,
-        n_scales=5, n_angles=25, scaling_amplitude=0.1, perspective_amplitude_x=0.2,
-        perspective_amplitude_y=0.1, patch_ratio=0.5, max_angle=pi,
+        n_scales=5, n_angles=25, scaling_amplitude=0.1, perspective_amplitude_x=0.1,
+        perspective_amplitude_y=0.1, patch_ratio=0.5, max_angle=pi/2,
         allow_artifacts=False, translation_overflow=0.):
     """Sample a random valid homography.
 
@@ -122,8 +122,15 @@ def sample_homography(
         scaling: A boolean that enables the random scaling of the patch.
         rotation: A boolean that enables the random rotation of the patch.
         translation: A boolean that enables the random translation of the patch.
-        n_scales: the number of tentative scales that are sampled when scaling.
-        n_angles: the number of tentatives angles that are sampled when rotating.
+        n_scales: The number of tentative scales that are sampled when scaling.
+        n_angles: The number of tentatives angles that are sampled when rotating.
+        scaling_amplitude: Controls the amount of scale.
+        perspective_amplitude_x: Controls the perspective effect in x direction.
+        perspective_amplitude_y: Controls the perspective effect in y direction.
+        patch_ratio: Controls the size of the patches used to create the homography.
+        max_angle: Maximum angle used in rotations.
+        allow_artifacts: A boolean that enables artifacts when applying the homography.
+        translation_overflow: Amount of border artifacts caused by translation.
 
     Returns:
         A `Tensor` of shape `[1, 8]` corresponding to the flattened homography transform.
@@ -142,9 +149,14 @@ def sample_homography(
         if not allow_artifacts:
             perspective_amplitude_x = min(perspective_amplitude_x, margin)
             perspective_amplitude_y = min(perspective_amplitude_y, margin)
-        pts2 += tf.concat([tf.truncated_normal([4, 1], 0., perspective_amplitude_x/2),
-                           tf.truncated_normal([4, 1], 0., perspective_amplitude_y/2)],
-                          axis=1)
+        perspective_displacement = tf.truncated_normal([1], 0., perspective_amplitude_y)
+        h_displacement_left = tf.truncated_normal([1], 0., perspective_amplitude_x)
+        h_displacement_right = tf.truncated_normal([1], 0., perspective_amplitude_x)
+        pts2 += tf.stack([tf.concat([h_displacement_left, perspective_displacement], 0),
+                          tf.concat([h_displacement_left, -perspective_displacement], 0),
+                          tf.concat([h_displacement_right, perspective_displacement], 0),
+                          tf.concat([h_displacement_right, -perspective_displacement],
+                                    0)])
 
     # Random scaling
     # sample several scales, check collision with borders, randomly pick a valid one
