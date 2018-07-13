@@ -6,6 +6,41 @@ This is a Tensorflow implementation of  "SuperPoint: Self-Supervised Interest Po
 ![hp-v_235](doc/hp-v_235.png)
 ![hp-v_280](doc/hp-v_280.png)
 
+## HPatches repeatability results
+
+Repeatability on HPatches computed with 300 points detected in common between pairs of images and with a NMS of 4:
+ <table style="width:100%">
+  <tr>
+    <th></th>
+    <th>Illumination changes</th>
+    <th>Viewpoint changes</th>
+  </tr>
+  <tr>
+    <td>SuperPoint (our implementation)</td>
+    <td><b>0.661</b></td>
+    <td>0.409</td>
+  </tr>
+  <tr>
+    <td>SuperPoint (<a href='https://github.com/MagicLeapResearch/SuperPointPretrainedNetwork' >pretrained model of MagicLeap<a>)</td>
+    <td>0.641</td>
+    <td>0.379</td>
+  </tr>
+  <tr>
+    <td>FAST</td>
+    <td>0.577</td>
+    <td>0.415</td>
+  </tr>
+  <tr>
+    <td>Harris</td>
+    <td>0.630</td>
+    <td><b>0.474</b></td>
+  </tr>
+  <tr>
+    <td>Shi</td>
+    <td>0.583</td>
+    <td>0.407</td>
+</table>
+
 **NOTE**: this work is still in progress. Although we match the results of the original paper for illumination changes, more experiments are required to 1) improve the robustness to viewpoint changes, and 2) train the descriptor. **We provide a temporary Tensorflow SavedModel of MagicPoint in `superpoint/saved_models/`.**
 
 ## Installation
