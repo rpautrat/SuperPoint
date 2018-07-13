@@ -1,6 +1,6 @@
 data:
     name: 'coco'
-    labels: null # Complete with your export labels
+    labels: outputs/mp_synth-v7_ha2-100_no-topk # Complete with your export labels
     cache_in_memory: false
     validation_size: 192
     augmentation:
@@ -26,10 +26,10 @@ data:
                 scaling: true
                 perspective: true
                 scaling_amplitude: 0.2
-                perspective_amplitude_x: 0.4
-                perspective_amplitude_y: 0.3
+                perspective_amplitude_x: 0.1
+                perspective_amplitude_y: 0.1
                 patch_ratio: 0.85
-                max_angle: 3.14
+                max_angle: 1.57
                 allow_artifacts: true
             valid_border_margin: 3
 model:
@@ -37,8 +37,8 @@ model:
     batch_size: 32
     eval_batch_size: 32
     learning_rate: 0.001
-    detection_threshold: 0.015 # 1/65
+    detection_threshold: 0.001 # 0.015
     nms: 4
-    top_k: 300
+    # top_k: 300
 train_iter: 200000
 validation_interval: 1000

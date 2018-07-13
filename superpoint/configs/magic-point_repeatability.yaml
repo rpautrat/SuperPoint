@@ -3,7 +3,7 @@ data:
     dataset: 'hpatches'  # 'coco' 'hpatches'
     alteration: 'v'  # 'all' 'i' 'v'
     preprocessing:
-        resize: [240, 320]  # False for coco
+        resize: [240, 320]  # [240, 320] for HPatches and False for coco
 model:
     name: 'magic_point'
     batch_size: 50
@@ -11,9 +11,9 @@ model:
     learning_rate: 0.001
     detection_threshold: 0.001
     nms: 4
-    top_k: 300
+    top_k: 1000
     homography_adaptation:
-        num: 100
+        num: 0
         aggregation: 'sum'
         filter_counts: 0
         homographies:
@@ -22,7 +22,8 @@ model:
             scaling: true
             perspective: true
             scaling_amplitude: 0.1
-            perspective_amplitude_x: 0.05
-            perspective_amplitude_y: 0.05
-            allow_artifacts: false
+            perspective_amplitude_x: 0.1
+            perspective_amplitude_y: 0.1
+            allow_artifacts: true
+            patch_ratio: 0.5
 eval_iter: 1000
