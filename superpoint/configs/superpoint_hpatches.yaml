@@ -23,6 +23,7 @@ model:
             scaling: true
             perspective: true
             scaling_amplitude: 0.1
-            perspective_amplitude: 0.05
+            perspective_amplitude_x: 0.1
+            perspective_amplitude_y: 0.1
 eval_iter: 600
 seed: 1
