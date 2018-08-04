@@ -32,7 +32,8 @@ data:
                 scaling: true
                 perspective: true
                 scaling_amplitude: 0.2
-                perspective_amplitude: 0.2
+                perspective_amplitude_x: 0.1
+                perspective_amplitude_y: 0.1
                 patch_ratio: 0.8
                 max_angle: 3.14
                 allow_artifacts: true
