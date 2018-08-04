@@ -71,7 +71,7 @@ def descriptor_loss(descriptors, warped_descriptors, homographies,
     (batch_size, Hc, Wc) = tf.unstack(tf.to_int32(tf.shape(descriptors)[:3]))
     coord_cells = tf.stack(tf.meshgrid(
         tf.range(Hc), tf.range(Wc), indexing='ij'), axis=-1)
-    coord_cells = coord_cells + config['grid_size'] // 2  # (Hc, Wc, 2)
+    coord_cells = coord_cells * config['grid_size'] + config['grid_size'] // 2  # (Hc, Wc, 2)
     # coord_cells is now a grid containing the coordinates of the Hc x Wc
     # center pixels of the 8x8 cells of the image
 
@@ -80,7 +80,7 @@ def descriptor_loss(descriptors, warped_descriptors, homographies,
     # warped_coord_cells is now a list of the warped coordinates of all the center
     # pixels of the 8x8 cells of the image, shape (N, Hc x Wc, 2)
 
-    # Compute the pairwise distances and filter the the ones less than a threshold
+    # Compute the pairwise distances and filter the ones less than a threshold
     # The distance is just the pairwise norm of the difference of the two grids
     # Using shape broadcasting, cell_distances has shape (N, Hc, Wc, Hc, Wc)
     coord_cells = tf.to_float(tf.reshape(coord_cells, [1, Hc, Wc, 1, 1, 2]))
