@@ -4,7 +4,7 @@ data:
     truncate: {draw_ellipses: 0.3, draw_stripes: 0.2, gaussian_noise: 0.1}
     cache_in_memory: true
     validation_size: 500
-    suffix: 'v5'
+    suffix: 'v6'
     add_augmentation_to_test_set: false  # set to true to evaluate with noise
     preprocessing:
         blur_size: 21
@@ -32,9 +32,11 @@ data:
                 scaling: true
                 perspective: true
                 scaling_amplitude: 0.2
-                perspective_amplitude: 0.2
+                # perspective_amplitude: 0.2
+                perspective_amplitude_x: 0.1
+                perspective_amplitude_y: 0.1
                 patch_ratio: 0.8
-                max_angle: 3.14
+                max_angle: 1.57  # 3.14
                 allow_artifacts: true
                 translation_overflow: 0.05
             valid_border_margin: 2
@@ -44,7 +46,7 @@ model:
     eval_batch_size: 50
     learning_rate: 0.001
     kernel_reg: 0.
-    detection_threshold: 0.015 # 1/65
+    detection_threshold: 0.001 # 1/65
     nms: 4
 train_iter: 200000
 eval_iter: 200
