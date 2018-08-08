@@ -149,9 +149,9 @@ def sample_homography(
         if not allow_artifacts:
             perspective_amplitude_x = min(perspective_amplitude_x, margin)
             perspective_amplitude_y = min(perspective_amplitude_y, margin)
-        perspective_displacement = tf.truncated_normal([1], 0., perspective_amplitude_y)
-        h_displacement_left = tf.truncated_normal([1], 0., perspective_amplitude_x)
-        h_displacement_right = tf.truncated_normal([1], 0., perspective_amplitude_x)
+        perspective_displacement = tf.truncated_normal([1], 0., perspective_amplitude_y/2)
+        h_displacement_left = tf.truncated_normal([1], 0., perspective_amplitude_x/2)
+        h_displacement_right = tf.truncated_normal([1], 0., perspective_amplitude_x/2)
         pts2 += tf.stack([tf.concat([h_displacement_left, perspective_displacement], 0),
                           tf.concat([h_displacement_left, -perspective_displacement], 0),
                           tf.concat([h_displacement_right, perspective_displacement], 0),

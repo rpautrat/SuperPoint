@@ -28,11 +28,11 @@ data:
             scaling: true
             perspective: true
             scaling_amplitude: 0.25
-            perspective_amplitude_x: 0.1
-            perspective_amplitude_y: 0.1
+            perspective_amplitude_x: 0.2
+            perspective_amplitude_y: 0.2
             patch_ratio: 0.85
             max_angle: 1.57
-            allow_artifacts: true
+            allow_artifacts: false
         valid_border_margin: 3
 model:
     name: 'super_point'
@@ -42,7 +42,7 @@ model:
     lambda_d: 250
     positive_margin: 1
     negative_margin: 0.2
-    lambda_loss: 5
+    lambda_loss: 0.0001
     detection_threshold: 0.001 # 1/65
     nms: 4
     top_k: 600
