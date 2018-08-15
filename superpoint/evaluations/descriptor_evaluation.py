@@ -71,16 +71,18 @@ def compute_homography(data, keep_k_points=1000, correctness_thresh=3, orb=False
     if orb:
         desc = desc.astype(np.uint8)
         warped_desc = warped_desc.astype(np.uint8)
-        bf = cv2.BFMatcher(cv2.NORM_HAMMING)
+        bf = cv2.BFMatcher(cv2.NORM_HAMMING, crossCheck=True)
     else:
-        bf = cv2.BFMatcher(cv2.NORM_L2)
+        bf = cv2.BFMatcher(cv2.NORM_L2, crossCheck=True)
     matches = bf.match(desc, warped_desc)
+    matches_idx = np.array([m.queryIdx for m in matches])
+    m_keypoints = keypoints[matches_idx, :]
     matches_idx = np.array([m.trainIdx for m in matches])
-    matched_keypoints = warped_keypoints[matches_idx, :]
+    m_warped_keypoints = warped_keypoints[matches_idx, :]
 
     # Estimate the homography between the matches using RANSAC
-    H, inliers = cv2.findHomography(keypoints[:, [1, 0]],
-                                    matched_keypoints[:, [1, 0]],
+    H, inliers = cv2.findHomography(m_keypoints[:, [1, 0]],
+                                    m_warped_keypoints[:, [1, 0]],
                                     cv2.RANSAC)
     inliers = inliers.flatten()
 
