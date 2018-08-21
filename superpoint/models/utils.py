@@ -14,7 +14,7 @@ def detector_head(inputs, **config):
 
     with tf.variable_scope('detector', reuse=tf.AUTO_REUSE):
         x = vgg_block(inputs, 256, 3, 'conv1', **params_conv)
-        x = vgg_block(inputs, 1+pow(config['grid_size'], 2), 1, 'conv2', **params_conv)
+        x = vgg_block(x, 1+pow(config['grid_size'], 2), 1, 'conv2', **params_conv)
 
         prob = tf.nn.softmax(x, axis=cindex)
         # Strip the extra “no interest point” dustbin
@@ -36,7 +36,7 @@ def descriptor_head(inputs, **config):
 
     with tf.variable_scope('descriptor', reuse=tf.AUTO_REUSE):
         x = vgg_block(inputs, 256, 3, 'conv1', **params_conv)
-        x = vgg_block(inputs, config['descriptor_size'], 1, 'conv2', **params_conv)
+        x = vgg_block(x, config['descriptor_size'], 1, 'conv2', **params_conv)
 
         desc = tf.transpose(x, [0, 2, 3, 1]) if cfirst else x
         with tf.device('/cpu:0'):  # op not supported on GPU yet
@@ -115,6 +115,13 @@ def descriptor_loss(descriptors, warped_descriptors, homographies,
     valid_mask = tf.reshape(valid_mask, [batch_size, 1, 1, Hc, Wc])
 
     normalization = tf.reduce_sum(valid_mask) * tf.to_float(Hc * Wc)
+    # Summaries for debugging
+    # tf.summary.scalar('nb_positive', tf.reduce_sum(valid_mask * s) / normalization)
+    # tf.summary.scalar('nb_negative', tf.reduce_sum(valid_mask * (1 - s)) / normalization)
+    tf.summary.scalar('positive_dist', tf.reduce_sum(valid_mask * config['lambda_d'] *
+                                                     s * positive_dist) / normalization)
+    tf.summary.scalar('negative_dist', tf.reduce_sum(valid_mask * (1 - s) *
+                                                     negative_dist) / normalization)
     loss = tf.reduce_sum(valid_mask * loss) / normalization
     return loss
 
