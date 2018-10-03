@@ -6,15 +6,17 @@ from .backbones.vgg import vgg_block
 
 def detector_head(inputs, **config):
     params_conv = {'padding': 'SAME', 'data_format': config['data_format'],
-                   'activation': tf.nn.relu, 'batch_normalization': True,
+                   'batch_normalization': True,
                    'training': config['training'],
                    'kernel_reg': config.get('kernel_reg', 0.)}
     cfirst = config['data_format'] == 'channels_first'
     cindex = 1 if cfirst else -1  # index of the channel
 
     with tf.variable_scope('detector', reuse=tf.AUTO_REUSE):
-        x = vgg_block(inputs, 256, 3, 'conv1', **params_conv)
-        x = vgg_block(x, 1+pow(config['grid_size'], 2), 1, 'conv2', **params_conv)
+        x = vgg_block(inputs, 256, 3, 'conv1',
+                      activation=tf.nn.relu, **params_conv)
+        x = vgg_block(x, 1+pow(config['grid_size'], 2), 1, 'conv2',
+                      activation=None, **params_conv)
 
         prob = tf.nn.softmax(x, axis=cindex)
         # Strip the extra “no interest point” dustbin
@@ -28,15 +30,17 @@ def detector_head(inputs, **config):
 
 def descriptor_head(inputs, **config):
     params_conv = {'padding': 'SAME', 'data_format': config['data_format'],
-                   'activation': tf.nn.relu, 'batch_normalization': True,
+                   'batch_normalization': True,
                    'training': config['training'],
                    'kernel_reg': config.get('kernel_reg', 0.)}
     cfirst = config['data_format'] == 'channels_first'
     cindex = 1 if cfirst else -1  # index of the channel
 
     with tf.variable_scope('descriptor', reuse=tf.AUTO_REUSE):
-        x = vgg_block(inputs, 256, 3, 'conv1', **params_conv)
-        x = vgg_block(x, config['descriptor_size'], 1, 'conv2', **params_conv)
+        x = vgg_block(inputs, 256, 3, 'conv1',
+                      activation=tf.nn.relu, **params_conv)
+        x = vgg_block(x, config['descriptor_size'], 1, 'conv2',
+                      activation=None, **params_conv)
 
         desc = tf.transpose(x, [0, 2, 3, 1]) if cfirst else x
         with tf.device('/cpu:0'):  # op not supported on GPU yet
