@@ -1,6 +1,6 @@
 data:
     name: 'coco'
-    labels: outputs/mp_synth-v7_ha2-100_no-topk # Complete with your export labels
+    labels: outputs/mp_synth-v10_ha2-100  # Complete with your export labels
     cache_in_memory: false
     validation_size: 192
     augmentation:
@@ -40,5 +40,5 @@ model:
     detection_threshold: 0.001 # 0.015
     nms: 4
     # top_k: 300
-train_iter: 200000
+train_iter: 18000
 validation_interval: 1000

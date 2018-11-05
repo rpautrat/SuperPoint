@@ -10,7 +10,7 @@ model:
     batch_size: 50
     eval_batch_size: 50
     learning_rate: 0.001
-    detection_threshold: 0.001 # 1/65
+    detection_threshold: 0.015 # 1/65
     nms: 4
     top_k: 1000
     homography_adaptation:
@@ -28,5 +28,5 @@ model:
             patch_ratio: 0.85
             max_angle: 1.57
             allow_artifacts: false
-eval_iter: 600
+eval_iter: 50  # 600
 seed: 1
