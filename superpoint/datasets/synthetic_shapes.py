@@ -136,9 +136,11 @@ class SyntheticShapes(BaseDataset):
             truncate = config['truncate'].get(primitive, 1)
             path = Path(temp_dir, primitive)
             for s in splits:
-                for obj in ['images', 'points']:
-                    e = [str(p) for p in Path(path, obj, s).iterdir()]
-                    splits[s][obj].extend(e[:int(truncate*len(e))])
+                e = [str(p) for p in Path(path, 'images', s).iterdir()]
+                f = [p.replace('images', 'points') for p in e]
+                f = [p.replace('.png', '.npy') for p in f]
+                splits[s]['images'].extend(e[:int(truncate*len(e))])
+                splits[s]['points'].extend(f[:int(truncate*len(f))])
 
         # Shuffle
         for s in splits:
