@@ -1,7 +1,7 @@
 data:
     name: 'patches_dataset'
     dataset: 'hpatches'  # 'coco' 'hpatches'
-    alteration: 'i'  # 'all' 'i' 'v'
+    alteration: 'v'  # 'all' 'i' 'v'
     preprocessing:
         resize: [480, 640]  # False for coco
 model:
@@ -10,8 +10,8 @@ model:
     batch_size: 50
     eval_batch_size: 50
     learning_rate: 0.001
-    detection_threshold: 0.015 # 1/65
-    nms: 4
+    detection_threshold: 0.001 # 1/65
+    nms: 8
     top_k: 1000
     homography_adaptation:
         num: 0
