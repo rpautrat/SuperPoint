@@ -1,7 +1,7 @@
 data:
     name: 'patches_dataset'
     dataset: 'hpatches'  # 'coco' 'hpatches'
-    alteration: 'v'  # 'all' 'i' 'v'
+    alteration: 'i'  # 'all' 'i' 'v'
     preprocessing:
         resize: [480, 640]  # False for coco
 model:
@@ -28,5 +28,5 @@ model:
             patch_ratio: 0.85
             max_angle: 1.57
             allow_artifacts: false
-eval_iter: 50  # 600
+eval_iter: 600
 seed: 1
