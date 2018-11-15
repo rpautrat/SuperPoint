@@ -87,11 +87,11 @@ def descriptor_loss(descriptors, warped_descriptors, homographies,
     # Compute the pairwise distances and filter the ones less than a threshold
     # The distance is just the pairwise norm of the difference of the two grids
     # Using shape broadcasting, cell_distances has shape (N, Hc, Wc, Hc, Wc)
-    coord_cells = tf.to_float(tf.reshape(coord_cells, [1, Hc, Wc, 1, 1, 2]))
+    coord_cells = tf.to_float(tf.reshape(coord_cells, [1, 1, 1, Hc, Wc, 2]))
     warped_coord_cells = tf.reshape(warped_coord_cells,
-                                    [batch_size, 1, 1, Hc, Wc, 2])
+                                    [batch_size, Hc, Wc, 1, 1, 2])
     cell_distances = tf.norm(coord_cells - warped_coord_cells, axis=-1)
-    s = tf.to_float(tf.less_equal(cell_distances, config['grid_size']))
+    s = tf.to_float(tf.less_equal(cell_distances, config['grid_size'] - 0.5))
     # s[id_batch, h, w, h', w'] == 1 if the point of coordinates (h, w) warped by the
     # homography is at a distance from (h', w') less than config['grid_size']
     # and 0 otherwise
@@ -111,7 +111,9 @@ def descriptor_loss(descriptors, warped_descriptors, homographies,
     loss = config['lambda_d'] * s * positive_dist + (1 - s) * negative_dist
 
     # Mask the pixels if bordering artifacts appear
-    valid_mask = tf.ones([batch_size, Hc, Wc], tf.float32)\
+    valid_mask = tf.ones([batch_size,
+                          Hc * config['grid_size'],
+                          Wc * config['grid_size']], tf.float32)\
         if valid_mask is None else valid_mask
     valid_mask = tf.to_float(valid_mask[..., tf.newaxis])  # for GPU
     valid_mask = tf.space_to_depth(valid_mask, config['grid_size'])
