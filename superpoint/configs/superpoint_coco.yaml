@@ -31,19 +31,19 @@ data:
             perspective_amplitude_x: 0.2
             perspective_amplitude_y: 0.2
             patch_ratio: 0.85
-            max_angle: 0.78  # 1.57
+            max_angle: 1.57
             allow_artifacts: true
         valid_border_margin: 3
 model:
     name: 'super_point'
     batch_size: 3
     eval_batch_size: 3
-    learning_rate: 0.0001  # 0.001
+    learning_rate: 0.0001
     lambda_d: 800
     positive_margin: 1
     negative_margin: 0.2
-    lambda_loss: 0.0001
-    detection_threshold: 0.001 # 1/65
+    lambda_loss: 1
+    detection_threshold: 0.001
     nms: 4
     top_k: 600
 train_iter: 170000
