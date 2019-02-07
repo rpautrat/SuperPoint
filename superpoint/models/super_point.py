@@ -79,9 +79,11 @@ class SuperPoint(BaseModel):
         # Compute the loss for the descriptor head
         descriptor_loss = utils.descriptor_loss(
                 descriptors, warped_descriptors, outputs['homography'],
-                valid_mask=inputs['valid_mask'], **config)
+                valid_mask=inputs['warped']['valid_mask'], **config)
 
-        tf.summary.scalar('detector_loss', detector_loss + warped_detector_loss)
+        tf.summary.scalar('detector_loss1', detector_loss)
+        tf.summary.scalar('detector_loss2', warped_detector_loss)
+        tf.summary.scalar('detector_loss_full', detector_loss + warped_detector_loss)
         tf.summary.scalar('descriptor_loss', config['lambda_loss'] * descriptor_loss)
 
         loss = (detector_loss + warped_detector_loss

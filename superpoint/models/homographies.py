@@ -187,7 +187,7 @@ def sample_homography(
     # sample several rotations, check collision with borders, randomly pick a valid one
     if rotation:
         angles = tf.lin_space(tf.constant(-max_angle), tf.constant(max_angle), n_angles)
-        angles = tf.concat([angles, [0.]], axis=0)  # in case no rotation is valid
+        angles = tf.concat([[0.], angles], axis=0)  # in case no rotation is valid
         center = tf.reduce_mean(pts2, axis=0, keepdims=True)
         rot_mat = tf.reshape(tf.stack([tf.cos(angles), -tf.sin(angles), tf.sin(angles),
                                        tf.cos(angles)], axis=1), [-1, 2, 2])

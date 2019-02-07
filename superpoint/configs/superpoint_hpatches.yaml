@@ -11,7 +11,7 @@ model:
     eval_batch_size: 50
     learning_rate: 0.001
     detection_threshold: 0.001 # 1/65
-    nms: 4
+    nms: 8
     top_k: 1000
     homography_adaptation:
         num: 0

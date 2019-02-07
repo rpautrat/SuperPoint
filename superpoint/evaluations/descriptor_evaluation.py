@@ -84,6 +84,14 @@ def compute_homography(data, keep_k_points=1000, correctness_thresh=3, orb=False
     H, inliers = cv2.findHomography(m_keypoints[:, [1, 0]],
                                     m_warped_keypoints[:, [1, 0]],
                                     cv2.RANSAC)
+    if H is None:
+        return {'correctness': 0.,
+                'keypoints1': keypoints,
+                'keypoints2': warped_keypoints,
+                'matches': matches,
+                'inliers': inliers,
+                'homography': H}
+
     inliers = inliers.flatten()
 
     # Compute correctness

@@ -6,15 +6,17 @@ from .backbones.vgg import vgg_block
 
 def detector_head(inputs, **config):
     params_conv = {'padding': 'SAME', 'data_format': config['data_format'],
-                   'activation': tf.nn.relu, 'batch_normalization': True,
+                   'batch_normalization': True,
                    'training': config['training'],
                    'kernel_reg': config.get('kernel_reg', 0.)}
     cfirst = config['data_format'] == 'channels_first'
     cindex = 1 if cfirst else -1  # index of the channel
 
     with tf.variable_scope('detector', reuse=tf.AUTO_REUSE):
-        x = vgg_block(inputs, 256, 3, 'conv1', **params_conv)
-        x = vgg_block(inputs, 1+pow(config['grid_size'], 2), 1, 'conv2', **params_conv)
+        x = vgg_block(inputs, 256, 3, 'conv1',
+                      activation=tf.nn.relu, **params_conv)
+        x = vgg_block(x, 1+pow(config['grid_size'], 2), 1, 'conv2',
+                      activation=None, **params_conv)
 
         prob = tf.nn.softmax(x, axis=cindex)
         # Strip the extra “no interest point” dustbin
@@ -28,15 +30,17 @@ def detector_head(inputs, **config):
 
 def descriptor_head(inputs, **config):
     params_conv = {'padding': 'SAME', 'data_format': config['data_format'],
-                   'activation': tf.nn.relu, 'batch_normalization': True,
+                   'batch_normalization': True,
                    'training': config['training'],
                    'kernel_reg': config.get('kernel_reg', 0.)}
     cfirst = config['data_format'] == 'channels_first'
     cindex = 1 if cfirst else -1  # index of the channel
 
     with tf.variable_scope('descriptor', reuse=tf.AUTO_REUSE):
-        x = vgg_block(inputs, 256, 3, 'conv1', **params_conv)
-        x = vgg_block(inputs, config['descriptor_size'], 1, 'conv2', **params_conv)
+        x = vgg_block(inputs, 256, 3, 'conv1',
+                      activation=tf.nn.relu, **params_conv)
+        x = vgg_block(x, config['descriptor_size'], 1, 'conv2',
+                      activation=None, **params_conv)
 
         desc = tf.transpose(x, [0, 2, 3, 1]) if cfirst else x
         with tf.device('/cpu:0'):  # op not supported on GPU yet
@@ -83,11 +87,11 @@ def descriptor_loss(descriptors, warped_descriptors, homographies,
     # Compute the pairwise distances and filter the ones less than a threshold
     # The distance is just the pairwise norm of the difference of the two grids
     # Using shape broadcasting, cell_distances has shape (N, Hc, Wc, Hc, Wc)
-    coord_cells = tf.to_float(tf.reshape(coord_cells, [1, Hc, Wc, 1, 1, 2]))
+    coord_cells = tf.to_float(tf.reshape(coord_cells, [1, 1, 1, Hc, Wc, 2]))
     warped_coord_cells = tf.reshape(warped_coord_cells,
-                                    [batch_size, 1, 1, Hc, Wc, 2])
+                                    [batch_size, Hc, Wc, 1, 1, 2])
     cell_distances = tf.norm(coord_cells - warped_coord_cells, axis=-1)
-    s = tf.to_float(tf.less_equal(cell_distances, config['grid_size']))
+    s = tf.to_float(tf.less_equal(cell_distances, config['grid_size'] - 0.5))
     # s[id_batch, h, w, h', w'] == 1 if the point of coordinates (h, w) warped by the
     # homography is at a distance from (h', w') less than config['grid_size']
     # and 0 otherwise
@@ -107,7 +111,9 @@ def descriptor_loss(descriptors, warped_descriptors, homographies,
     loss = config['lambda_d'] * s * positive_dist + (1 - s) * negative_dist
 
     # Mask the pixels if bordering artifacts appear
-    valid_mask = tf.ones([batch_size, Hc, Wc], tf.float32)\
+    valid_mask = tf.ones([batch_size,
+                          Hc * config['grid_size'],
+                          Wc * config['grid_size']], tf.float32)\
         if valid_mask is None else valid_mask
     valid_mask = tf.to_float(valid_mask[..., tf.newaxis])  # for GPU
     valid_mask = tf.space_to_depth(valid_mask, config['grid_size'])
@@ -115,6 +121,13 @@ def descriptor_loss(descriptors, warped_descriptors, homographies,
     valid_mask = tf.reshape(valid_mask, [batch_size, 1, 1, Hc, Wc])
 
     normalization = tf.reduce_sum(valid_mask) * tf.to_float(Hc * Wc)
+    # Summaries for debugging
+    # tf.summary.scalar('nb_positive', tf.reduce_sum(valid_mask * s) / normalization)
+    # tf.summary.scalar('nb_negative', tf.reduce_sum(valid_mask * (1 - s)) / normalization)
+    tf.summary.scalar('positive_dist', tf.reduce_sum(valid_mask * config['lambda_d'] *
+                                                     s * positive_dist) / normalization)
+    tf.summary.scalar('negative_dist', tf.reduce_sum(valid_mask * (1 - s) *
+                                                     negative_dist) / normalization)
     loss = tf.reduce_sum(valid_mask * loss) / normalization
     return loss
 
