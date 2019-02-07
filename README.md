@@ -101,7 +101,6 @@ Homography estimation on HPatches computed with a maximum of 1000 points detecte
   </tr>
 </table>
 
-**NOTE**: we provide a temporary Tensorflow SavedModel of both MagicPoint (detector only) and SuperPoint (detector and descriptor) in `superpoint/saved_models/`, but it seems that they are not working properly for now. It is advised to rather retrain them with your own machine.
 
 ## Installation
 
