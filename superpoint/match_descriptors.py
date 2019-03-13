@@ -116,6 +116,10 @@ if __name__ == '__main__':
             pred1 = net.predict(data1, keys=['prob_nms', 'descriptors'])
             end_time = time.time()
             print("Run time:", end_time - start_time)
+            # print(pred1['prob_nms'].shape)
+            # print(pred1['prob_nms'].max())
+            # print(pred1['prob_nms'].min())
+            # input()
 
             start_time = time.time()
             pred2 = net.predict(data2, keys=['prob_nms', 'descriptors'])
@@ -127,6 +131,8 @@ if __name__ == '__main__':
                     'desc': pred1['descriptors'],
                     'warped_desc': pred2['descriptors'],
                     'homography': data['homography']}
+            print(data['homography'])
+            print(data['homography'].shape)
 
             if not ('name' in data):
                 pred.update(data)
