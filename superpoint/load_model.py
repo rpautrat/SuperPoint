@@ -1,71 +1,87 @@
-import numpy as np
 import yaml
 import argparse
-import logging
 from pathlib import Path
-import cv2
-import matplotlib.pyplot as plt
-import time
 
-logging.basicConfig(format='[%(asctime)s %(levelname)s] %(message)s',
-                    datefmt='%m/%d/%Y %H:%M:%S',
-                    level=logging.INFO)
+import cv2
+import numpy as np
 import tensorflow as tf  # noqa: E402
 
-from superpoint.models import get_model  # noqa: E402
 from superpoint.settings import EXPER_PATH  # noqa: E402
-import superpoint.evaluations.my_descriptor_evaluation as ev
 
-def plot_imgs(imgs, titles=None, cmap='brg', ylabel='', normalize=False, ax=None, dpi=100):
-    n = len(imgs)
-    if not isinstance(cmap, list):
-        cmap = [cmap]*n
-    if ax is None:
-        _, ax = plt.subplots(1, n, figsize=(6*n, 6), dpi=dpi)
-        if n == 1:
-            ax = [ax]
-    else:
-        if not isinstance(ax, list):
-            ax = [ax]
-        assert len(ax) == len(imgs)
-    for i in range(n):
-        if imgs[i].shape[-1] == 3:
-            imgs[i] = imgs[i][..., ::-1]  # BGR to RGB
-        ax[i].imshow(imgs[i], cmap=plt.get_cmap(cmap[i]),
-                     vmin=None if normalize else 0,
-                     vmax=None if normalize else 1)
-        if titles:
-            ax[i].set_title(titles[i])
-        ax[i].get_yaxis().set_ticks([])
-        ax[i].get_xaxis().set_ticks([])
-        for spine in ax[i].spines.values():  # remove frame
-            spine.set_visible(False)
-    ax[0].set_ylabel(ylabel)
-    plt.tight_layout()
+def extract_keypoints_and_descriptors(keypoint_map, descriptor_map):
 
-def draw_matches(data):
-    keypoints1 = [cv2.KeyPoint(p[1], p[0], 1) for p in data['keypoints1']]
-    keypoints2 = [cv2.KeyPoint(p[1], p[0], 1) for p in data['keypoints2']]
-    inliers = data['inliers'].astype(bool)
-    matches = np.array(data['matches'])[inliers].tolist()
-    img1 = np.concatenate([output['image1'], output['image1'], output['image1']], axis=2)
-    img2 = np.concatenate([output['image2'], output['image2'], output['image2']], axis=2)
-    return cv2.drawMatches(img1, keypoints1, img2, keypoints2, matches,
-                           None, matchColor=(0,255,0), singlePointColor=(0, 0, 255))
+    def select_k_best(points, k):
+        """ Select the k most probable points (and strip their proba).
+        points has shape (num_points, 3) where the last coordinate is the proba. """
+        sorted_prob = points[points[:, 2].argsort(), :2]
+        start = min(k, points.shape[0])
+        return sorted_prob[-start:, :]
+
+    # Extract keypoints
+    keep_k_points = 1000
+
+    keypoints = np.where(keypoint_map > 0)
+    prob = keypoint_map[keypoints[0], keypoints[1]]
+    keypoints = np.stack([keypoints[0], keypoints[1], prob], axis=-1)
+
+    keypoints = select_k_best(keypoints, keep_k_points)
+    keypoints = keypoints.astype(int)
+
+    # Get descriptors for keypoints
+    desc = descriptor_map[keypoints[:, 0], keypoints[:, 1]]
+
+    keypoints = [cv2.KeyPoint(p[1], p[0], 1) for p in keypoints]
+
+    return keypoints, desc
+
+def match_descriptors(kp1, desc1, kp2, desc2):
+    # Match the keypoints with the warped_keypoints with nearest neighbor search
+    bf = cv2.BFMatcher(cv2.NORM_L2, crossCheck=True)
+    matches = bf.match(desc1, desc2)
+    matches_idx = np.array([m.queryIdx for m in matches])
+    m_kp1 = [kp1[idx] for idx in matches_idx]
+    matches_idx = np.array([m.trainIdx for m in matches])
+    m_kp2 = [kp2[idx] for idx in matches_idx]
+
+    return m_kp1, m_kp2, matches
+
+def compute_homography(matched_kp1, matched_kp2):
+    matched_pts1 = cv2.KeyPoint_convert(matched_kp1)
+    matched_pts2 = cv2.KeyPoint_convert(matched_kp2)
+
+    # Estimate the homography between the matches using RANSAC
+    H, inliers = cv2.findHomography(matched_pts1[:, [1, 0]],
+                                    matched_pts2[:, [1, 0]],
+                                    cv2.RANSAC)
+    inliers = inliers.flatten()
+    return H, inliers
+
+def preprocess_image(img_file, img_size):
+    img = cv2.imread(img_file, cv2.IMREAD_COLOR)
+    img = cv2.resize(img, img_size)
+    img_orig = img.copy()
+
+    img = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+    img = np.expand_dims(img, 2)
+    img = img.astype(np.float32)
+    img_preprocessed = img
+
+    return img_preprocessed, img_orig
 
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
-    parser.add_argument('config', type=str)
+    parser = argparse.ArgumentParser(description='Compute the homography between two images with the SuperPoint feature matches.')
     parser.add_argument('export_name', type=str)
+    parser.add_argument('--H', type=int, default=480,
+                        help='The height in pixels to resize the images to. (default: 480)')
+    parser.add_argument('--W', type=int, default=640,
+                        help='The width in pixels to resize the images to. (default: 640)')
     args = parser.parse_args()
 
     export_name = args.export_name
-    with open(args.config, 'r') as f:
-        config = yaml.load(f)
-    config['model']['data_format'] = 'channels_last'
+    img_size = (args.W, args.H)
 
-    export_name = "sp_v5"
     export_root_dir = Path(EXPER_PATH, 'saved_models')
     export_root_dir.mkdir(parents=True, exist_ok=True)
     export_dir = Path(export_root_dir, export_name)
@@ -77,49 +93,34 @@ if __name__ == '__main__':
                 [tf.saved_model.tag_constants.SERVING], str(export_dir))
 
         input_img_tensor = graph.get_tensor_by_name('superpoint/image:0')
-        print(input_img_tensor)
         output_prob_nms_tensor = graph.get_tensor_by_name('superpoint/prob_nms:0')
-        print(output_prob_nms_tensor)
         output_desc_tensors = graph.get_tensor_by_name('superpoint/descriptors:0')
-        print(output_prob_nms_tensor)
 
-        img_file1 = "/home/mmmfarrell/turtle_datasets/snowy_arch1.png"
-        img1 = cv2.imread(img_file1)
-        img1 = cv2.cvtColor(img1, cv2.COLOR_BGR2GRAY)
-        img1 = np.expand_dims(img1, 2)
-        img1 = img1.astype(np.float32)
+        img1_file = "/home/mmmfarrell/turtle_datasets/snowy_arch1.png"
+        img1, img1_orig = preprocess_image(img1_file, img_size)
 
-        start_time = time.time()
         out1 = sess.run([output_prob_nms_tensor, output_desc_tensors],
                 feed_dict={input_img_tensor: np.expand_dims(img1, 0)})
-        end_time = time.time()
-        print("Run time:", end_time - start_time)
+        kp1, desc1 = extract_keypoints_and_descriptors(np.squeeze(out1[0]),
+                np.squeeze(out1[1]))
 
-        img_file2 = "/home/mmmfarrell/turtle_datasets/clear_arch1.png"
-        img2 = cv2.imread(img_file2)
-        img2 = cv2.cvtColor(img2, cv2.COLOR_BGR2GRAY)
-        img2 = np.expand_dims(img2, 2)
-        img2 = img2.astype(np.float32)
+        img2_file = "/home/mmmfarrell/turtle_datasets/clear_arch1.png"
+        img2, img2_orig = preprocess_image(img2_file, img_size)
 
-        start_time = time.time()
         out2 = sess.run([output_prob_nms_tensor, output_desc_tensors],
                 feed_dict={input_img_tensor: np.expand_dims(img2, 0)})
-        end_time = time.time()
-        print("Run time:", end_time - start_time)
+        kp2, desc2 = extract_keypoints_and_descriptors(np.squeeze(out2[0]),
+                np.squeeze(out2[1]))
 
-        data = {}
-        data['homography'] = np.eye(3)
-        pred = {'prob': np.squeeze(out1[0]),
-                'warped_prob': np.squeeze(out2[0]),
-                'desc': np.squeeze(out1[1]),
-                'warped_desc': np.squeeze(out2[1]),
-                'homography': data['homography']}
+        # Match and get rid of outliers
+        m_kp1, m_kp2, matches = match_descriptors(kp1, desc1, kp2, desc2)
+        H, inliers = compute_homography(m_kp1, m_kp2)
 
-        output = ev.compute_homography(pred, 1000, 3, False)
-        output['image1'] = img1
-        output['image2'] = img2
+        # Draw pretty picture
+        matches = np.array(matches)[inliers.astype(bool)].tolist()
+        matched_img = cv2.drawMatches(img1_orig, kp1, img2_orig, kp2, matches,
+                           None, matchColor=(0,255,0), singlePointColor=(0, 0, 255))
 
-        img = draw_matches(output) / 255.
-        plot_imgs([img], titles=["matches"], dpi=200)
-        plt.show()
+        cv2.imshow("matches", matched_img)
+        cv2.waitKey(0)
     
