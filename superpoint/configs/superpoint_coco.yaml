@@ -1,6 +1,6 @@
 data:
     name: 'coco'
-    cache_in_memory: true
+    cache_in_memory: false
     validation_size: 96
     labels: outputs/mp_synth-v10_ha2-100  # use your own labels here
     augmentation:

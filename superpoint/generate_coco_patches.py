@@ -6,8 +6,8 @@ import argparse
 import yaml
 from pathlib import Path
 
-from superpoint.models.utils import (sample_homography, flat2mat,
-                                     invert_homography)
+from superpoint.models.homographies import (sample_homography, flat2mat,
+                                            invert_homography)
 from superpoint.settings import DATA_PATH
 
 
