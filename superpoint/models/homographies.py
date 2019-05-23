@@ -58,11 +58,7 @@ def homography_adaptation(image, net, config):
                             H_inv, interpolation='NEAREST')[..., 0]
 
         # Predict detection probabilities
-        warped_shape = tf.to_int32(
-                tf.to_float(shape)*config['homographies']['patch_ratio'])
-        input_warped = tf.image.resize_images(warped, warped_shape)
-        prob = net(input_warped)['prob']
-        prob = tf.image.resize_images(tf.expand_dims(prob, axis=-1), shape)[..., 0]
+        prob = net(warped)['prob']
         prob_proj = H_transform(tf.expand_dims(prob, -1), H_inv,
                                 interpolation='BILINEAR')[..., 0]
 
@@ -137,12 +133,12 @@ def sample_homography(
     """
 
     # Corners of the output image
-    pts1 = tf.stack([[0., 0.], [0., 1.], [1., 1.], [1., 0.]], axis=0)
-    # Corners of the input patch
     margin = (1 - patch_ratio) / 2
-    pts2 = margin + tf.constant([[0, 0], [0, patch_ratio],
+    pts1 = margin + tf.constant([[0, 0], [0, patch_ratio],
                                  [patch_ratio, patch_ratio], [patch_ratio, 0]],
                                 tf.float32)
+    # Corners of the input patch
+    pts2 = pts1
 
     # Random perspective and affine perturbations
     if perspective:
