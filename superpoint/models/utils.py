@@ -56,7 +56,10 @@ def detector_loss(keypoint_map, logits, valid_mask=None, **config):
     labels = tf.to_float(keypoint_map[..., tf.newaxis])  # for GPU
     labels = tf.space_to_depth(labels, config['grid_size'])
     shape = tf.concat([tf.shape(labels)[:3], [1]], axis=0)
-    labels = tf.argmax(tf.concat([2*labels, tf.ones(shape)], 3), axis=3)
+    labels = tf.concat([2*labels, tf.ones(shape)], 3)
+    # multiply by a small random matrix to randomly break ties in argmax
+    labels = tf.argmax(labels * tf.random_uniform(tf.shape(labels), 0, 0.1),
+                       axis=3)
 
     # Mask the pixels if bordering artifacts appear
     valid_mask = tf.ones_like(keypoint_map) if valid_mask is None else valid_mask
