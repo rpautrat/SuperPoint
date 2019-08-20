@@ -160,13 +160,13 @@ class SyntheticShapes(BaseDataset):
                         **config['generation']['params']['generate_background'])
                 points = np.array(getattr(synthetic_dataset, primitive)(
                         image, **config['generation']['params'].get(primitive, {})))
-                yield (np.expand_dims(image, axis=-1).astype(np.float32),
+                yield (np.expand_dims(image, axis=-1).astype(np.float32) / 255.,
                        np.flip(points.astype(np.float32), 1))
 
         def _read_image(filename):
             image = tf.read_file(filename)
             image = tf.image.decode_png(image, channels=1)
-            return tf.cast(image, tf.float32)
+            return tf.cast(image, tf.float32) / 255.
 
         # Python function
         def _read_points(filename):

@@ -66,7 +66,7 @@ class Coco(BaseDataset):
         def _read_image(path):
             image = tf.read_file(path)
             image = tf.image.decode_png(image, channels=3)
-            return image
+            return tf.cast(image, tf.float32) / 255.
 
         def _preprocess(image):
             image = tf.image.rgb_to_grayscale(image)

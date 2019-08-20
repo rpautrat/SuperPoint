@@ -57,7 +57,7 @@ class PatchesDataset(BaseDataset):
             if config['preprocessing']['resize']:
                 image = pipeline.ratio_preserving_resize(image,
                                                          **config['preprocessing'])
-            return tf.to_float(image)
+            return tf.to_float(image) / 255.
 
         def _warp_image(image):
             H = sample_homography(tf.shape(image)[:2])
