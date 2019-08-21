@@ -9,6 +9,7 @@ from superpoint.utils.tools import dict_update
 homography_adaptation_default_config = {
         'num': 1,
         'aggregation': 'sum',
+        'valid_border_margin': 3,
         'homographies': {
             'translation': True,
             'rotation': True,
@@ -55,12 +56,21 @@ def homography_adaptation(image, net, config):
         H_inv = invert_homography(H)
         warped = H_transform(image, H, interpolation='BILINEAR')
         count = H_transform(tf.expand_dims(tf.ones(tf.shape(image)[:3]), -1),
-                            H_inv, interpolation='NEAREST')[..., 0]
+                            H_inv, interpolation='NEAREST')
+        # Ignore the detections too close to the border to avoid artifacts
+        if config['valid_border_margin']:
+            kernel = cv.getStructuringElement(
+                cv.MORPH_ELLIPSE, (config['valid_border_margin'] * 2,) * 2)
+            with tf.device('/cpu:0'):
+                count = tf.nn.erosion2d(
+                    count, tf.to_float(tf.constant(kernel)[..., tf.newaxis]),
+                    [1, 1, 1, 1], [1, 1, 1, 1], 'SAME')[..., 0] + 1.
 
         # Predict detection probabilities
         prob = net(warped)['prob']
         prob_proj = H_transform(tf.expand_dims(prob, -1), H_inv,
                                 interpolation='BILINEAR')[..., 0]
+        prob_proj = prob_proj * count
 
         probs = tf.concat([probs, tf.expand_dims(prob_proj, -1)], axis=-1)
         counts = tf.concat([counts, tf.expand_dims(count, -1)], axis=-1)

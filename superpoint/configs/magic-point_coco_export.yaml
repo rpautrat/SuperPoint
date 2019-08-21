@@ -13,6 +13,7 @@ model:
         num: 100
         aggregation: 'sum'
         filter_counts: 0
+        valid_border_margin: 3
         homographies:
             translation: true
             rotation: true
