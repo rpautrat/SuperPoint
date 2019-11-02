@@ -1,4 +1,4 @@
-import numpy as np
+mport numpy as np
 import tensorflow as tf
 import cv2
 import os
@@ -160,13 +160,13 @@ class SyntheticShapes(BaseDataset):
                         **config['generation']['params']['generate_background'])
                 points = np.array(getattr(synthetic_dataset, primitive)(
                         image, **config['generation']['params'].get(primitive, {})))
-                yield (np.expand_dims(image, axis=-1).astype(np.float32) / 255.,
+                yield (np.expand_dims(image, axis=-1).astype(np.float32),
                        np.flip(points.astype(np.float32), 1))
 
         def _read_image(filename):
             image = tf.read_file(filename)
             image = tf.image.decode_png(image, channels=1)
-            return tf.cast(image, tf.float32) / 255.
+            return tf.cast(image, tf.float32)
 
         # Python function
         def _read_points(filename):
@@ -212,5 +212,6 @@ class SyntheticShapes(BaseDataset):
 
         # Convert the point coordinates to a dense keypoint map
         data = data.map_parallel(pipeline.add_keypoint_map)
+        data = data.map_parallel(lambda d: {**d, 'image': tf.to_float(d['image']) / 255.})
 
         return data
