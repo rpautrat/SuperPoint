@@ -76,6 +76,13 @@ def compute_homography(data, keep_k_points=1000, correctness_thresh=3, orb=False
         bf = cv2.BFMatcher(cv2.NORM_L2, crossCheck=True)
     matches = bf.match(desc, warped_desc)
     matches_idx = np.array([m.queryIdx for m in matches])
+    if len(matches_idx) == 0:  # No match found
+        return {'correctness': 0.,
+                'keypoints1': keypoints,
+                'keypoints2': warped_keypoints,
+                'matches': [],
+                'inliers': [],
+                'homography': None}
     m_keypoints = keypoints[matches_idx, :]
     matches_idx = np.array([m.trainIdx for m in matches])
     m_warped_keypoints = warped_keypoints[matches_idx, :]
@@ -96,9 +103,9 @@ def compute_homography(data, keep_k_points=1000, correctness_thresh=3, orb=False
 
     # Compute correctness
     corners = np.array([[0, 0, 1],
-                        [0, shape[1] - 1, 1],
-                        [shape[0] - 1, 0, 1],
-                        [shape[0] - 1, shape[1] - 1, 1]])
+                        [shape[1] - 1, 0, 1],
+                        [0, shape[0] - 1, 1],
+                        [shape[1] - 1, shape[0] - 1, 1]])
     real_warped_corners = np.dot(corners, np.transpose(real_H))
     real_warped_corners = real_warped_corners[:, :2] / real_warped_corners[:, 2:]
     warped_corners = np.dot(corners, np.transpose(H))
