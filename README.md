@@ -53,23 +53,23 @@ Homography estimation on HPatches computed with a maximum of 1000 points detecte
   </tr>
   <tr>
     <td>SuperPoint (our implementation)</td>
-    <td><b>0.944</b></td>
-    <td>0.244</td>
+    <td><b>0.930</b></td>
+    <td>0.624</td>
   </tr>
   <tr>
     <td>SuperPoint (<a href='https://github.com/MagicLeapResearch/SuperPointPretrainedNetwork' >pretrained model of MagicLeap<a>)</td>
-    <td>0.881</td>
-    <td>0.251</td>
+    <td>0.898</td>
+    <td>0.671</td>
   </tr>
   <tr>
     <td>SIFT</td>
-    <td>0.811</td>
-    <td><b>0.258</b></td>
+    <td>0.758</td>
+    <td><b>0.688</b></td>
   </tr>
   <tr>
     <td>ORB</td>
-    <td>0.547</td>
-    <td>0.129</td>
+    <td>0.460</td>
+    <td>0.315</td>
   </tr>
 </table>
  
@@ -83,21 +83,27 @@ Homography estimation on HPatches computed with a maximum of 1000 points detecte
   </tr>
   <tr>
     <td>SuperPoint (our implementation)</td>
-    <td><b>0.334</b></td>
-    <td><b>0.588</b></td>
-    <td><b>0.631</b></td>
+    <td><b>0.447</b></td>
+    <td><b>0.786</b></td>
+    <td>0.852</td>
+  </tr>
+  <tr>
+    <td>SuperPoint (<a href='https://github.com/MagicLeapResearch/SuperPointPretrainedNetwork' >pretrained model of MagicLeap<a>)</td>
+    <td>0.395</td>
+    <td>0.783</td>
+    <td><b>0.867</b></td>
   </tr>
   <tr>
     <td>SIFT</td>
-    <td>0.302</td>
-    <td>0.517</td>
-    <td>0.556</td>
+    <td>0.441</td>
+    <td>0.722</td>
+    <td>0.786</td>
   </tr>
   <tr>
     <td>ORB</td>
-    <td>0.121</td>
-    <td>0.303</td>
-    <td>0.378</td>
+    <td>0.141</td>
+    <td>0.386</td>
+    <td>0.495</td>
   </tr>
 </table>
 
