@@ -54,12 +54,11 @@ class MagicPoint(BaseModel):
         return detector_loss(inputs['keypoint_map'], outputs['logits'],
                              valid_mask=inputs['valid_mask'], **config)
 
-    # TODO: add involved corner detector metrics
     def _metrics(self, outputs, inputs, **config):
-        pred = outputs['pred']
+        pred = inputs['valid_mask'] * outputs['pred']
         labels = inputs['keypoint_map']
 
-        precision = tf.reduce_sum(pred*labels) / tf.reduce_sum(pred)
-        recall = tf.reduce_sum(pred*labels) / tf.reduce_sum(labels)
+        precision = tf.reduce_sum(pred * labels) / tf.reduce_sum(pred)
+        recall = tf.reduce_sum(pred * labels) / tf.reduce_sum(labels)
 
         return {'precision': precision, 'recall': recall}

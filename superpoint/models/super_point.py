@@ -91,10 +91,10 @@ class SuperPoint(BaseModel):
         return loss
 
     def _metrics(self, outputs, inputs, **config):
-        pred = outputs['pred']
+        pred = inputs['valid_mask'] * outputs['pred']
         labels = inputs['keypoint_map']
 
-        precision = tf.reduce_sum(pred*labels) / tf.reduce_sum(pred)
-        recall = tf.reduce_sum(pred*labels) / tf.reduce_sum(labels)
+        precision = tf.reduce_sum(pred * labels) / tf.reduce_sum(pred)
+        recall = tf.reduce_sum(pred * labels) / tf.reduce_sum(labels)
 
         return {'precision': precision, 'recall': recall}
