@@ -11,11 +11,12 @@ from demo_superpoint import SuperPointNet, SuperPointFrontend
 
 
 def classical_detector(im, **config):
-    im = np.uint8(im * 255)
     if config['method'] == 'harris':
+        im = np.uint8(im * 255)
         detections = cv2.cornerHarris(im, 4, 3, 0.04)
 
     elif config['method'] == 'shi':
+        im = np.uint8(im * 255)
         detections = np.zeros(im.shape[:2], np.float)
         thresh = np.linspace(0.0001, 1, 600, endpoint=False)
         for t in thresh:
@@ -25,6 +26,7 @@ def classical_detector(im, **config):
                 detections[(corners[:, 0, 1], corners[:, 0, 0])] = t
 
     elif config['method'] == 'fast':
+        im = np.uint8(im * 255)
         detector = cv2.FastFeatureDetector_create(10)
         corners = detector.detect(im.astype(np.uint8))
         detections = np.zeros(im.shape[:2], np.float)
