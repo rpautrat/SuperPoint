@@ -68,27 +68,27 @@ class PatchesDataset(BaseDataset):
 
             # Compute the scaling ratio due to the resizing for both images
             s = tf.reduce_max(tf.divide(target_size, source_size))
-            up_scale = tf.diag(tf.stack([s, s, tf.constant(1.)]))
+            up_scale = tf.diag(tf.stack([1. / s, 1. / s, tf.constant(1.)]))
             warped_s = tf.reduce_max(tf.divide(target_size, source_warped_size))
-            down_scale = tf.diag(tf.stack([1 / warped_s, 1 / warped_s, tf.constant(1.)]))
+            down_scale = tf.diag(tf.stack([warped_s, warped_s, tf.constant(1.)]))
 
             # Compute the translation due to the crop for both images
             pad_y = tf.to_int32(((source_size[0] * s - target_size[0]) / tf.constant(2.0)))
             pad_x = tf.to_int32(((source_size[1] * s - target_size[1]) / tf.constant(2.0)))
-            translation = tf.stack([tf.constant(1), tf.constant(0), -pad_x, 
-                                    tf.constant(0), tf.constant(1), -pad_y,
+            translation = tf.stack([tf.constant(1), tf.constant(0), pad_x, 
+                                    tf.constant(0), tf.constant(1), pad_y,
                                     tf.constant(0),tf.constant(0), tf.constant(1)])
             translation = tf.to_float(tf.reshape(translation, [3,3]))
             pad_y = tf.to_int32(((source_warped_size[0] * warped_s - target_size[0])
                                  / tf.constant(2.0)))
             pad_x = tf.to_int32(((source_warped_size[1] * warped_s - target_size[1])
                                  / tf.constant(2.0)))
-            warped_translation = tf.stack([tf.constant(1), tf.constant(0), pad_x, 
-                                           tf.constant(0), tf.constant(1), pad_y,
+            warped_translation = tf.stack([tf.constant(1), tf.constant(0), -pad_x, 
+                                           tf.constant(0), tf.constant(1), -pad_y,
                                            tf.constant(0),tf.constant(0), tf.constant(1)])
             warped_translation = tf.to_float(tf.reshape(warped_translation, [3,3]))
 
-            H = translation @ up_scale @ H @ down_scale @ warped_translation
+            H = warped_translation @ down_scale @ H @ up_scale @ translation
             return H
 
         def _get_shape(image):
