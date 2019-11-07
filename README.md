@@ -18,28 +18,28 @@ Repeatability on HPatches computed with 300 points detected in common between pa
   </tr>
   <tr>
     <td>SuperPoint (our implementation)</td>
-    <td><b>0.661</b></td>
-    <td>0.409</td>
+    <td><b>0.656</b></td>
+    <td>0.645</td>
   </tr>
   <tr>
     <td>SuperPoint (<a href='https://github.com/MagicLeapResearch/SuperPointPretrainedNetwork' >pretrained model of MagicLeap<a>)</td>
     <td>0.641</td>
-    <td>0.379</td>
+    <td>0.621</td>
   </tr>
   <tr>
     <td>FAST</td>
-    <td>0.577</td>
-    <td>0.415</td>
+    <td>0.576</td>
+    <td>0.625</td>
   </tr>
   <tr>
     <td>Harris</td>
     <td>0.630</td>
-    <td><b>0.474</b></td>
+    <td><b>0.755</b></td>
   </tr>
   <tr>
     <td>Shi</td>
-    <td>0.583</td>
-    <td>0.407</td>
+    <td>0.584</td>
+    <td>0.629</td>
   </tr>
 </table>
    
@@ -53,23 +53,23 @@ Homography estimation on HPatches computed with a maximum of 1000 points detecte
   </tr>
   <tr>
     <td>SuperPoint (our implementation)</td>
-    <td><b>0.930</b></td>
-    <td>0.624</td>
+    <td><b>0.940</b></td>
+    <td>0.678</td>
   </tr>
   <tr>
     <td>SuperPoint (<a href='https://github.com/MagicLeapResearch/SuperPointPretrainedNetwork' >pretrained model of MagicLeap<a>)</td>
-    <td>0.898</td>
-    <td>0.671</td>
+    <td>0.923</td>
+    <td>0.742</td>
   </tr>
   <tr>
     <td>SIFT</td>
-    <td>0.758</td>
-    <td><b>0.688</b></td>
+    <td>0.807</td>
+    <td><b>0.766</b></td>
   </tr>
   <tr>
     <td>ORB</td>
-    <td>0.460</td>
-    <td>0.315</td>
+    <td>0.523</td>
+    <td>0.414</td>
   </tr>
 </table>
  
@@ -83,27 +83,27 @@ Homography estimation on HPatches computed with a maximum of 1000 points detecte
   </tr>
   <tr>
     <td>SuperPoint (our implementation)</td>
-    <td><b>0.447</b></td>
-    <td><b>0.786</b></td>
-    <td>0.852</td>
+    <td>0.490</td>
+    <td>0.807</td>
+    <td>0.890</td>
   </tr>
   <tr>
     <td>SuperPoint (<a href='https://github.com/MagicLeapResearch/SuperPointPretrainedNetwork' >pretrained model of MagicLeap<a>)</td>
-    <td>0.395</td>
-    <td>0.783</td>
-    <td><b>0.867</b></td>
+    <td>0.438</td>
+    <td><b>0.833</b></td>
+    <td><b>0.914</b></td>
   </tr>
   <tr>
     <td>SIFT</td>
-    <td>0.441</td>
-    <td>0.722</td>
+    <td><b>0.498</b></td>
+    <td>0.786</td>
     <td>0.786</td>
   </tr>
   <tr>
     <td>ORB</td>
-    <td>0.141</td>
-    <td>0.386</td>
-    <td>0.495</td>
+    <td>0.162</td>
+    <td>0.467</td>
+    <td>0.564</td>
   </tr>
 </table>
 
