@@ -57,6 +57,8 @@ def homography_adaptation(image, net, config):
         warped = H_transform(image, H, interpolation='BILINEAR')
         count = H_transform(tf.expand_dims(tf.ones(tf.shape(image)[:3]), -1),
                             H_inv, interpolation='NEAREST')
+        mask = H_transform(tf.expand_dims(tf.ones(tf.shape(image)[:3]), -1),
+                            H, interpolation='NEAREST')
         # Ignore the detections too close to the border to avoid artifacts
         if config['valid_border_margin']:
             kernel = cv.getStructuringElement(
@@ -65,9 +67,13 @@ def homography_adaptation(image, net, config):
                 count = tf.nn.erosion2d(
                     count, tf.to_float(tf.constant(kernel)[..., tf.newaxis]),
                     [1, 1, 1, 1], [1, 1, 1, 1], 'SAME')[..., 0] + 1.
+                mask = tf.nn.erosion2d(
+                    mask, tf.to_float(tf.constant(kernel)[..., tf.newaxis]),
+                    [1, 1, 1, 1], [1, 1, 1, 1], 'SAME')[..., 0] + 1.
 
         # Predict detection probabilities
         prob = net(warped)['prob']
+        prob = prob * mask
         prob_proj = H_transform(tf.expand_dims(prob, -1), H_inv,
                                 interpolation='BILINEAR')[..., 0]
         prob_proj = prob_proj * count
