@@ -53,8 +53,8 @@ Homography estimation on HPatches computed with a maximum of 1000 points detecte
   </tr>
   <tr>
     <td>SuperPoint (our implementation)</td>
-    <td><b>0.940</b></td>
-    <td>0.678</td>
+    <td><b>0.965</b></td>
+    <td>0.712</td>
   </tr>
   <tr>
     <td>SuperPoint (<a href='https://github.com/MagicLeapResearch/SuperPointPretrainedNetwork' >pretrained model of MagicLeap<a>)</td>
@@ -83,14 +83,14 @@ Homography estimation on HPatches computed with a maximum of 1000 points detecte
   </tr>
   <tr>
     <td>SuperPoint (our implementation)</td>
-    <td>0.490</td>
-    <td>0.807</td>
-    <td>0.890</td>
+    <td>0.483</td>
+    <td><b>0.836</b></td>
+    <td>0.910</td>
   </tr>
   <tr>
     <td>SuperPoint (<a href='https://github.com/MagicLeapResearch/SuperPointPretrainedNetwork' >pretrained model of MagicLeap<a>)</td>
     <td>0.438</td>
-    <td><b>0.833</b></td>
+    <td>0.833</td>
     <td><b>0.914</b></td>
   </tr>
   <tr>
