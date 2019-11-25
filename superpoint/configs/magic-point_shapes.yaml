@@ -8,7 +8,7 @@ data:
     add_augmentation_to_test_set: false  # set to true to evaluate with noise
     preprocessing:
         blur_size: 21
-        resize: [120, 160]
+        resize: [120, 160]  # Should be multiples of 8
     augmentation:
         photometric:
             enable: true
@@ -47,7 +47,7 @@ model:
     kernel_reg: 0.
     detection_threshold: 0.001 # 1/65
     nms: 4
-train_iter: 200000
+train_iter: 50000
 eval_iter: 200
 validation_interval: 1000
 seed: 0

@@ -43,8 +43,8 @@ def descriptor_head(inputs, **config):
                       activation=None, **params_conv)
 
         desc = tf.transpose(x, [0, 2, 3, 1]) if cfirst else x
-        with tf.device('/cpu:0'):  # op not supported on GPU yet
-            desc = tf.image.resize_bicubic(desc, config['grid_size'] * tf.shape(desc)[1:3])
+        desc = tf.image.resize_bilinear(
+            desc, config['grid_size'] * tf.shape(desc)[1:3])
         desc = tf.transpose(desc, [0, 3, 1, 2]) if cfirst else desc
         desc = tf.nn.l2_normalize(desc, cindex)
 
@@ -56,7 +56,10 @@ def detector_loss(keypoint_map, logits, valid_mask=None, **config):
     labels = tf.to_float(keypoint_map[..., tf.newaxis])  # for GPU
     labels = tf.space_to_depth(labels, config['grid_size'])
     shape = tf.concat([tf.shape(labels)[:3], [1]], axis=0)
-    labels = tf.argmax(tf.concat([2*labels, tf.ones(shape)], 3), axis=3)
+    labels = tf.concat([2*labels, tf.ones(shape)], 3)
+    # multiply by a small random matrix to randomly break ties in argmax
+    labels = tf.argmax(labels * tf.random_uniform(tf.shape(labels), 0, 0.1),
+                       axis=3)
 
     # Mask the pixels if bordering artifacts appear
     valid_mask = tf.ones_like(keypoint_map) if valid_mask is None else valid_mask
@@ -96,11 +99,21 @@ def descriptor_loss(descriptors, warped_descriptors, homographies,
     # homography is at a distance from (h', w') less than config['grid_size']
     # and 0 otherwise
 
-    # Compute the pairwise dot product between descriptors: d^t * d'
+    # Normalize the descriptors and
+    # compute the pairwise dot product between descriptors: d^t * d'
     descriptors = tf.reshape(descriptors, [batch_size, Hc, Wc, 1, 1, -1])
+    descriptors = tf.nn.l2_normalize(descriptors, -1)
     warped_descriptors = tf.reshape(warped_descriptors,
                                     [batch_size, 1, 1, Hc, Wc, -1])
+    warped_descriptors = tf.nn.l2_normalize(warped_descriptors, -1)
     dot_product_desc = tf.reduce_sum(descriptors * warped_descriptors, -1)
+    dot_product_desc = tf.nn.relu(dot_product_desc)
+    dot_product_desc = tf.reshape(tf.nn.l2_normalize(
+        tf.reshape(dot_product_desc, [batch_size, Hc, Wc, Hc * Wc]),
+        3), [batch_size, Hc, Wc, Hc, Wc])
+    dot_product_desc = tf.reshape(tf.nn.l2_normalize(
+        tf.reshape(dot_product_desc, [batch_size, Hc * Wc, Hc, Wc]),
+        1), [batch_size, Hc, Wc, Hc, Wc])
     # dot_product_desc[id_batch, h, w, h', w'] is the dot product between the
     # descriptor at position (h, w) in the original descriptors map and the
     # descriptor at position (h', w') in the warped image

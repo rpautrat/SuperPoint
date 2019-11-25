@@ -1,4 +1,4 @@
-import numpy as np
+mport numpy as np
 import tensorflow as tf
 import cv2
 import os
@@ -212,5 +212,6 @@ class SyntheticShapes(BaseDataset):
 
         # Convert the point coordinates to a dense keypoint map
         data = data.map_parallel(pipeline.add_keypoint_map)
+        data = data.map_parallel(lambda d: {**d, 'image': tf.to_float(d['image']) / 255.})
 
         return data

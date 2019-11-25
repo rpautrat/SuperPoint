@@ -18,28 +18,28 @@ Repeatability on HPatches computed with 300 points detected in common between pa
   </tr>
   <tr>
     <td>SuperPoint (our implementation)</td>
-    <td><b>0.661</b></td>
-    <td>0.409</td>
+    <td><b>0.656</b></td>
+    <td>0.645</td>
   </tr>
   <tr>
     <td>SuperPoint (<a href='https://github.com/MagicLeapResearch/SuperPointPretrainedNetwork' >pretrained model of MagicLeap<a>)</td>
     <td>0.641</td>
-    <td>0.379</td>
+    <td>0.621</td>
   </tr>
   <tr>
     <td>FAST</td>
-    <td>0.577</td>
-    <td>0.415</td>
+    <td>0.576</td>
+    <td>0.625</td>
   </tr>
   <tr>
     <td>Harris</td>
     <td>0.630</td>
-    <td><b>0.474</b></td>
+    <td><b>0.755</b></td>
   </tr>
   <tr>
     <td>Shi</td>
-    <td>0.583</td>
-    <td>0.407</td>
+    <td>0.584</td>
+    <td>0.629</td>
   </tr>
 </table>
    
@@ -53,23 +53,23 @@ Homography estimation on HPatches computed with a maximum of 1000 points detecte
   </tr>
   <tr>
     <td>SuperPoint (our implementation)</td>
-    <td><b>0.944</b></td>
-    <td>0.244</td>
+    <td><b>0.965</b></td>
+    <td>0.712</td>
   </tr>
   <tr>
     <td>SuperPoint (<a href='https://github.com/MagicLeapResearch/SuperPointPretrainedNetwork' >pretrained model of MagicLeap<a>)</td>
-    <td>0.881</td>
-    <td>0.251</td>
+    <td>0.923</td>
+    <td>0.742</td>
   </tr>
   <tr>
     <td>SIFT</td>
-    <td>0.811</td>
-    <td><b>0.258</b></td>
+    <td>0.807</td>
+    <td><b>0.766</b></td>
   </tr>
   <tr>
     <td>ORB</td>
-    <td>0.547</td>
-    <td>0.129</td>
+    <td>0.523</td>
+    <td>0.414</td>
   </tr>
 </table>
  
@@ -83,21 +83,27 @@ Homography estimation on HPatches computed with a maximum of 1000 points detecte
   </tr>
   <tr>
     <td>SuperPoint (our implementation)</td>
-    <td><b>0.334</b></td>
-    <td><b>0.588</b></td>
-    <td><b>0.631</b></td>
+    <td>0.483</td>
+    <td><b>0.836</b></td>
+    <td>0.910</td>
+  </tr>
+  <tr>
+    <td>SuperPoint (<a href='https://github.com/MagicLeapResearch/SuperPointPretrainedNetwork' >pretrained model of MagicLeap<a>)</td>
+    <td>0.438</td>
+    <td>0.833</td>
+    <td><b>0.914</b></td>
   </tr>
   <tr>
     <td>SIFT</td>
-    <td>0.302</td>
-    <td>0.517</td>
-    <td>0.556</td>
+    <td><b>0.498</b></td>
+    <td>0.786</td>
+    <td>0.786</td>
   </tr>
   <tr>
     <td>ORB</td>
-    <td>0.121</td>
-    <td>0.303</td>
-    <td>0.378</td>
+    <td>0.162</td>
+    <td>0.467</td>
+    <td>0.564</td>
   </tr>
 </table>
 
@@ -126,7 +132,7 @@ $DATA_DIR
 ```
 
 ## Usage
-All commands should be executed within the `superpoint/` subfolder. When training a model or exporting its predictions, you will often have to change the relevant configuration file in `superpoint/configs/`. Both multi-GPU training and export are supported.
+All commands should be executed within the `superpoint/` subfolder. When training a model or exporting its predictions, you will often have to change the relevant configuration file in `superpoint/configs/`. Both multi-GPU training and export are supported. Note that MagicPoint and SuperPoint only work on images with dimensions divisible by 8 and the user is responsible for resizing them to a valid dimension.
 
 ### 1) Training MagicPoint on Synthetic Shapes
 ```

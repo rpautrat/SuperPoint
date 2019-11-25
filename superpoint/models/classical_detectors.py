@@ -1,16 +1,22 @@
 import tensorflow as tf
 import numpy as np
 import cv2
+import sys
+
+sys.path.append('/cluster/home/pautratr/3d_project/SuperPointPretrainedNetwork')
 
 from .base_model import BaseModel
 from .utils import box_nms
+from demo_superpoint import SuperPointNet, SuperPointFrontend
 
 
 def classical_detector(im, **config):
     if config['method'] == 'harris':
+        im = np.uint8(im * 255)
         detections = cv2.cornerHarris(im, 4, 3, 0.04)
 
     elif config['method'] == 'shi':
+        im = np.uint8(im * 255)
         detections = np.zeros(im.shape[:2], np.float)
         thresh = np.linspace(0.0001, 1, 600, endpoint=False)
         for t in thresh:
@@ -20,6 +26,7 @@ def classical_detector(im, **config):
                 detections[(corners[:, 0, 1], corners[:, 0, 0])] = t
 
     elif config['method'] == 'fast':
+        im = np.uint8(im * 255)
         detector = cv2.FastFeatureDetector_create(10)
         corners = detector.detect(im.astype(np.uint8))
         detections = np.zeros(im.shape[:2], np.float)
@@ -28,6 +35,15 @@ def classical_detector(im, **config):
 
     elif config['method'] == 'random':
         detections = np.random.rand(im.shape[0], im.shape[1])
+
+    elif config['method'] == 'pretrained_magic_point':
+        weights_path = '/cluster/home/pautratr/3d_project/SuperPointPretrainedNetwork/superpoint_v1.pth'
+        fe = SuperPointFrontend(weights_path=weights_path,
+                                nms_dist=config['nms'],
+                                conf_thresh=0.015,
+                                nn_thresh=0.7,
+                                cuda=True)
+        points, desc, detections = fe.run(im[:, :, 0])
 
     return detections.astype(np.float32)
 

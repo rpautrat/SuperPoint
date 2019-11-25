@@ -9,6 +9,7 @@ from superpoint.utils.tools import dict_update
 homography_adaptation_default_config = {
         'num': 1,
         'aggregation': 'sum',
+        'valid_border_margin': 3,
         'homographies': {
             'translation': True,
             'rotation': True,
@@ -55,16 +56,27 @@ def homography_adaptation(image, net, config):
         H_inv = invert_homography(H)
         warped = H_transform(image, H, interpolation='BILINEAR')
         count = H_transform(tf.expand_dims(tf.ones(tf.shape(image)[:3]), -1),
-                            H_inv, interpolation='NEAREST')[..., 0]
+                            H_inv, interpolation='NEAREST')
+        mask = H_transform(tf.expand_dims(tf.ones(tf.shape(image)[:3]), -1),
+                            H, interpolation='NEAREST')
+        # Ignore the detections too close to the border to avoid artifacts
+        if config['valid_border_margin']:
+            kernel = cv.getStructuringElement(
+                cv.MORPH_ELLIPSE, (config['valid_border_margin'] * 2,) * 2)
+            with tf.device('/cpu:0'):
+                count = tf.nn.erosion2d(
+                    count, tf.to_float(tf.constant(kernel)[..., tf.newaxis]),
+                    [1, 1, 1, 1], [1, 1, 1, 1], 'SAME')[..., 0] + 1.
+                mask = tf.nn.erosion2d(
+                    mask, tf.to_float(tf.constant(kernel)[..., tf.newaxis]),
+                    [1, 1, 1, 1], [1, 1, 1, 1], 'SAME')[..., 0] + 1.
 
         # Predict detection probabilities
-        warped_shape = tf.to_int32(
-                tf.to_float(shape)*config['homographies']['patch_ratio'])
-        input_warped = tf.image.resize_images(warped, warped_shape)
-        prob = net(input_warped)['prob']
-        prob = tf.image.resize_images(tf.expand_dims(prob, axis=-1), shape)[..., 0]
+        prob = net(warped)['prob']
+        prob = prob * mask
         prob_proj = H_transform(tf.expand_dims(prob, -1), H_inv,
                                 interpolation='BILINEAR')[..., 0]
+        prob_proj = prob_proj * count
 
         probs = tf.concat([probs, tf.expand_dims(prob_proj, -1)], axis=-1)
         counts = tf.concat([counts, tf.expand_dims(count, -1)], axis=-1)
@@ -137,12 +149,12 @@ def sample_homography(
     """
 
     # Corners of the output image
-    pts1 = tf.stack([[0., 0.], [0., 1.], [1., 1.], [1., 0.]], axis=0)
-    # Corners of the input patch
     margin = (1 - patch_ratio) / 2
-    pts2 = margin + tf.constant([[0, 0], [0, patch_ratio],
+    pts1 = margin + tf.constant([[0, 0], [0, patch_ratio],
                                  [patch_ratio, patch_ratio], [patch_ratio, 0]],
                                 tf.float32)
+    # Corners of the input patch
+    pts2 = pts1
 
     # Random perspective and affine perturbations
     if perspective:

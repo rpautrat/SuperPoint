@@ -66,7 +66,7 @@ class Coco(BaseDataset):
         def _read_image(path):
             image = tf.read_file(path)
             image = tf.image.decode_png(image, channels=3)
-            return image
+            return tf.cast(image, tf.float32)
 
         def _preprocess(image):
             image = tf.image.rgb_to_grayscale(image)
@@ -129,5 +129,12 @@ class Coco(BaseDataset):
         # Generate the keypoint map
         if has_keypoints:
             data = data.map_parallel(pipeline.add_keypoint_map)
+        data = data.map_parallel(
+            lambda d: {**d, 'image': tf.to_float(d['image']) / 255.})
+        if config['warped_pair']['enable']:
+            data = data.map_parallel(
+                lambda d: {
+                    **d, 'warped': {**d['warped'],
+                                    'image': tf.to_float(d['warped']['image']) / 255.}})
 
         return data

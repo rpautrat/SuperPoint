@@ -59,35 +59,61 @@ class PatchesDataset(BaseDataset):
                                                          **config['preprocessing'])
             return tf.to_float(image)
 
-        def _warp_image(image):
-            H = sample_homography(tf.shape(image)[:2])
-            warped_im = tf.contrib.image.transform(image, H, interpolation="BILINEAR")
-            return {'warped_im': warped_im, 'H': H}
-
         def _adapt_homography_to_preprocessing(zip_data):
-            image = zip_data['image']
             H = tf.cast(zip_data['homography'], tf.float32)
-            target_size = tf.convert_to_tensor(config['preprocessing']['resize'])
-            s = tf.reduce_max(tf.cast(tf.divide(target_size,
-                                                tf.shape(image)[:2]), tf.float32))
-            down_scale = tf.diag(tf.stack([1/s, 1/s, tf.constant(1.)]))
-            up_scale = tf.diag(tf.stack([s, s, tf.constant(1.)]))
-            H = tf.matmul(up_scale, tf.matmul(H, down_scale))
+            source_size = tf.cast(zip_data['shape'], tf.float32)
+            source_warped_size = tf.cast(zip_data['warped_shape'], tf.float32)
+            target_size = tf.cast(tf.convert_to_tensor(config['preprocessing']['resize']),
+                                  tf.float32)
+
+            # Compute the scaling ratio due to the resizing for both images
+            s = tf.reduce_max(tf.divide(target_size, source_size))
+            up_scale = tf.diag(tf.stack([1. / s, 1. / s, tf.constant(1.)]))
+            warped_s = tf.reduce_max(tf.divide(target_size, source_warped_size))
+            down_scale = tf.diag(tf.stack([warped_s, warped_s, tf.constant(1.)]))
+
+            # Compute the translation due to the crop for both images
+            pad_y = tf.to_int32(((source_size[0] * s - target_size[0]) / tf.constant(2.0)))
+            pad_x = tf.to_int32(((source_size[1] * s - target_size[1]) / tf.constant(2.0)))
+            translation = tf.stack([tf.constant(1), tf.constant(0), pad_x, 
+                                    tf.constant(0), tf.constant(1), pad_y,
+                                    tf.constant(0),tf.constant(0), tf.constant(1)])
+            translation = tf.to_float(tf.reshape(translation, [3,3]))
+            pad_y = tf.to_int32(((source_warped_size[0] * warped_s - target_size[0])
+                                 / tf.constant(2.0)))
+            pad_x = tf.to_int32(((source_warped_size[1] * warped_s - target_size[1])
+                                 / tf.constant(2.0)))
+            warped_translation = tf.stack([tf.constant(1), tf.constant(0), -pad_x, 
+                                           tf.constant(0), tf.constant(1), -pad_y,
+                                           tf.constant(0),tf.constant(0), tf.constant(1)])
+            warped_translation = tf.to_float(tf.reshape(warped_translation, [3,3]))
+
+            H = warped_translation @ down_scale @ H @ up_scale @ translation
             return H
+
+        def _get_shape(image):
+            return tf.shape(image)[:2]
 
         images = tf.data.Dataset.from_tensor_slices(files['image_paths'])
         images = images.map(lambda path: tf.py_func(_read_image, [path], tf.uint8))
         homographies = tf.data.Dataset.from_tensor_slices(np.array(files['homography']))
-        if config['preprocessing']['resize']:
-            homographies = tf.data.Dataset.zip({'image': images,
-                                                'homography': homographies})
-            homographies = homographies.map(_adapt_homography_to_preprocessing)
-        images = images.map(_preprocess)
         warped_images = tf.data.Dataset.from_tensor_slices(files['warped_image_paths'])
         warped_images = warped_images.map(lambda path: tf.py_func(_read_image,
                                                                   [path],
-                                                                  tf.uint8))
+                                                                  tf.uint8))       
+        if config['preprocessing']['resize']:
+            shapes = images.map(_get_shape)
+            warped_shapes = warped_images.map(_get_shape)
+            homographies = tf.data.Dataset.zip({'homography': homographies,
+                                                'shape': shapes,
+                                                'warped_shape': warped_shapes})
+            homographies = homographies.map(_adapt_homography_to_preprocessing)
+            
+        images = images.map(_preprocess)
         warped_images = warped_images.map(_preprocess)
+
+        images = images.map(lambda img: tf.to_float(img) / 255.)
+        warped_images = warped_images.map(lambda img: tf.to_float(img) / 255.)
 
         data = tf.data.Dataset.zip({'image': images, 'warped_image': warped_images,
                                     'homography': homographies})
