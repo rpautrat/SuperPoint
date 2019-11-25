@@ -99,11 +99,21 @@ def descriptor_loss(descriptors, warped_descriptors, homographies,
     # homography is at a distance from (h', w') less than config['grid_size']
     # and 0 otherwise
 
-    # Compute the pairwise dot product between descriptors: d^t * d'
+    # Normalize the descriptors and
+    # compute the pairwise dot product between descriptors: d^t * d'
     descriptors = tf.reshape(descriptors, [batch_size, Hc, Wc, 1, 1, -1])
+    descriptors = tf.nn.l2_normalize(descriptors, -1)
     warped_descriptors = tf.reshape(warped_descriptors,
                                     [batch_size, 1, 1, Hc, Wc, -1])
+    warped_descriptors = tf.nn.l2_normalize(warped_descriptors, -1)
     dot_product_desc = tf.reduce_sum(descriptors * warped_descriptors, -1)
+    dot_product_desc = tf.nn.relu(dot_product_desc)
+    dot_product_desc = tf.reshape(tf.nn.l2_normalize(
+        tf.reshape(dot_product_desc, [batch_size, Hc, Wc, Hc * Wc]),
+        3), [batch_size, Hc, Wc, Hc, Wc])
+    dot_product_desc = tf.reshape(tf.nn.l2_normalize(
+        tf.reshape(dot_product_desc, [batch_size, Hc * Wc, Hc, Wc]),
+        1), [batch_size, Hc, Wc, Hc, Wc])
     # dot_product_desc[id_batch, h, w, h', w'] is the dot product between the
     # descriptor at position (h, w) in the original descriptors map and the
     # descriptor at position (h', w') in the warped image

@@ -2,7 +2,7 @@ data:
     name: 'coco'
     cache_in_memory: false
     validation_size: 96
-    labels: outputs/mp_synth-v10_ha2-100  # use your own labels here
+    labels: outputs/mp_synth-v11_export_ha2  # use your own labels here
     augmentation:
         photometric:
             enable: true
@@ -36,15 +36,15 @@ data:
         valid_border_margin: 3
 model:
     name: 'super_point'
-    batch_size: 3
-    eval_batch_size: 3
+    batch_size: 2
+    eval_batch_size: 2
     learning_rate: 0.0001
-    lambda_d: 800
+    lambda_d: 0.05
     positive_margin: 1
     negative_margin: 0.2
-    lambda_loss: 1
+    lambda_loss: 10000
     detection_threshold: 0.001
     nms: 4
     top_k: 600
-train_iter: 170000
+train_iter: 600000
 validation_interval: 5000
