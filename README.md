@@ -18,8 +18,8 @@ Repeatability on HPatches computed with 300 points detected in common between pa
   </tr>
   <tr>
     <td>SuperPoint (our implementation)</td>
-    <td><b>0.656</b></td>
-    <td>0.645</td>
+    <td><b>0.662</b></td>
+    <td>0.674</td>
   </tr>
   <tr>
     <td>SuperPoint (<a href='https://github.com/MagicLeapResearch/SuperPointPretrainedNetwork' >pretrained model of MagicLeap<a>)</td>
