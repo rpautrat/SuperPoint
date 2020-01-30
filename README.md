@@ -172,21 +172,21 @@ python experiment.py train configs/superpoint_coco.yaml superpoint_coco
 ```
 python export_descriptors.py configs/superpoint_hpatches.yaml superpoint_coco --export_name=superpoint_hpatches-v
 ```
-You will need to decide again whether you want to evaluate for viewpoint or illumination by setting the entry `data/alteration` in the configuration file. The predictions of the image pairs will be saved in `$EXPER_DIR/outputs/superpoint_hpatches-v/`. To proceed to the evaluation, head over to `notebooks/descriptors_evaluation_on_hpatches.ipynb`. You can also evaluate the repeatability of the classical detectors using the configuration file `classical-descriptors.yaml`.
+You will need to decide again whether you want to evaluate for viewpoint or illumination by setting the entry `data/alteration` in the configuration file. The predictions of the image pairs will be saved in `$EXPER_PATH/outputs/superpoint_hpatches-v/`. To proceed to the evaluation, head over to `notebooks/descriptors_evaluation_on_hpatches.ipynb`. You can also evaluate the repeatability of the classical detectors using the configuration file `classical-descriptors.yaml`.
 
 ## Matching Features Demo with Pretrained Weights
-A set of pretrained weights is provided for you labeled `sp_v5`. You will need to extract the
+A set of pretrained weights is provided for you labeled `sp_v6`. You will need to extract the
 weights and place the directory in your experiments directory so that the path
-`$EXPER_DIR/saved_models/sp_v5` contains the weights. This can be easily done
+`$EXPER_PATH/saved_models/sp_v6` contains the weights. This can be easily done
 with the following command being run from the top level, `SuperPoint`, directory.
 ```
-tar -xzvf pretrained_models/sp_v5.tgz $EXPER_DIR/saved_models/sp_v5
+tar -xzvf pretrained_models/sp_v6.tgz $EXPER_PATH/saved_models/sp_v6
 ```
 
 With the pretrained weights extracted, you can run the `match_features_demo.py`
-to compare SuperPoint and SIFT matches across two images.
+to compare SuperPoint and SIFT matches across two images:
 ```
-python match_features_demo.py sp_v5 $DATA_DIR/HPatches/i_pool/1.ppm $DATA_DIR/i_pool/6.ppm
+python match_features_demo.py sp_v6 $DATA_PATH/HPatches/i_pool/1.ppm $DATA_PATH/i_pool/6.ppm
 ```
 Note that you can also pass in additional arguments such as `--H`, `--W`,
 `--k_best` to specify the height and width to resize the images and the maximum
