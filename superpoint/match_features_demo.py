@@ -75,7 +75,7 @@ def preprocess_image(img_file, img_size):
     img = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
     img = np.expand_dims(img, 2)
     img = img.astype(np.float32)
-    img_preprocessed = img
+    img_preprocessed = img / 255.
 
     return img_preprocessed, img_orig
 
