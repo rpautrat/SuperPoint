@@ -192,5 +192,16 @@ Note that you can also pass in additional arguments such as `--H`, `--W`,
 `--k_best` to specify the height and width to resize the images and the maximum
 number of keypoints you wish to keep from the detection process.
 
+## Fine-tuning a pretrained model
+You can also directly reuse the weights of the pretrained model on MS COCO and fine-tune it with your own model. First download and unzip one of the pretrained models in your `$EXPER_PATH` folder:
+- [MagicPoint (synthetic)](https://drive.google.com/file/d/1rdNtsGq_g-O_TlM5REX5sw3tAlp5b9o0/view?usp=sharing)
+- [MagicPoint (COCO)](https://drive.google.com/file/d/1DhPNfT4_DbolRHb7yXnB7g4AeVvABt7G/view?usp=sharing)
+- [SuperPoint (COCO)](https://drive.google.com/file/d/18VpMXubyWL6WoNfyq6kQ6g4AM19QJ0FV/view?usp=sharing)
+
+Then launch a training using the pretrained model, for example to fine-tune SuperPoint:
+```
+python superpoint/experiment.py train superpoint/configs/superpoint_coco.yaml superpoint_finetuned --pretrained_model sp_v6
+```
+
 ## Credits
 This implementation was developed by [Rémi Pautrat](https://github.com/rpautrat) and [Paul-Edouard Sarlin](https://github.com/Skydes). Please contact Rémi for any enquiry.
