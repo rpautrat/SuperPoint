@@ -16,9 +16,12 @@ logging.basicConfig(format='[%(asctime)s %(levelname)s] %(message)s',
 import tensorflow as tf  # noqa: E402
 
 
-def train(config, n_iter, output_dir, checkpoint_name='model.ckpt'):
+def train(config, n_iter, output_dir, pretrained_dir=None,
+          checkpoint_name='model.ckpt'):
     checkpoint_path = os.path.join(output_dir, checkpoint_name)
     with _init_graph(config) as net:
+        if pretrained_dir is not None:
+            net.load(pretrained_dir)
         try:
             net.train(n_iter, output_dir=output_dir,
                       validation_interval=config.get('validation_interval', 100),
@@ -83,7 +86,15 @@ def _cli_train(config, output_dir, args):
 
     with open(os.path.join(output_dir, 'config.yml'), 'w') as f:
         yaml.dump(config, f, default_flow_style=False)
-    train(config, config['train_iter'], output_dir)
+        
+    if args.pretrained_model is not None:
+        pretrained_dir = os.path.join(EXPER_PATH, args.pretrained_model)
+        if not os.path.exists(pretrained_dir):
+            raise ValueError("Missing pretrained model: " + pretrained_dir)
+    else:
+        pretrained_dir = None
+        
+    train(config, config['train_iter'], output_dir, pretrained_dir)
 
     if args.eval:
         _cli_eval(config, output_dir, args)
@@ -122,6 +133,7 @@ if __name__ == '__main__':
     p_train.add_argument('config', type=str)
     p_train.add_argument('exper_name', type=str)
     p_train.add_argument('--eval', action='store_true')
+    p_train.add_argument('--pretrained_model', type=str, default=None)
     p_train.set_defaults(func=_cli_train)
 
     # Evaluation command
