@@ -145,7 +145,7 @@ where `magic-point_synth` is the experiment name, which may be changed to anythi
 ```
 python export_detections.py configs/magic-point_coco_export.yaml magic-point_synth --pred_only --batch_size=5 --export_name=magic-point_coco-export1
 ```
-This will save the pseudo-ground truth interest point labels to `$EXPER_DIR/outputs/magic-point_coco-export1/`. You might enable or disable the Homographic Adaptation in the configuration file.
+This will save the pseudo-ground truth interest point labels to `$EXPER_DIR/outputs/magic-point_coco-export1/`. You might enable or disable the Homographic Adaptation in the configuration file. Note that if you want to train your model with resized images, you have to export the detections on the resized images directly. You can resize the images with the parameter data->preprocessing->resize of the config file.
 
 ### 3) Training MagicPoint on MS-COCO
 ```
