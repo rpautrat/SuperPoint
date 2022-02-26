@@ -1,3 +1,7 @@
+# If you have ROS in your system please uncomment the two lines below
+# import sys
+# sys.path.remove('/opt/ros/kinetic/lib/python2.7/dist-packages')
+
 import logging
 import yaml
 import os
@@ -59,6 +63,7 @@ def set_seed(seed):
 
 
 def get_num_gpus():
+    os.environ['CUDA_VISIBLE_DEVICES'] = "0"
     return len(os.environ['CUDA_VISIBLE_DEVICES'].split(','))
 
 
