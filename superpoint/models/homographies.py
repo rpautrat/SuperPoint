@@ -179,7 +179,7 @@ def sample_homography(
         scaled = tf.expand_dims(pts2 - center, axis=0) * tf.expand_dims(
                 tf.expand_dims(scales, 1), 1) + center
         if allow_artifacts:
-            valid = tf.range(n_scales)  # all scales are valid except scale=1
+            valid = tf.range(1, n_scales + 1)  # all scales are valid except scale=1
         else:
             valid = tf.where(tf.reduce_all((scaled >= 0.) & (scaled < 1.), [1, 2]))[:, 0]
         idx = valid[tf.random_uniform((), maxval=tf.shape(valid)[0], dtype=tf.int32)]
@@ -207,7 +207,7 @@ def sample_homography(
                 tf.tile(tf.expand_dims(pts2 - center, axis=0), [n_angles+1, 1, 1]),
                 rot_mat) + center
         if allow_artifacts:
-            valid = tf.range(n_angles)  # all angles are valid, except angle=0
+            valid = tf.range(1, n_angles + 1)  # all angles are valid, except angle=0
         else:
             valid = tf.where(tf.reduce_all((rotated >= 0.) & (rotated < 1.),
                                            axis=[1, 2]))[:, 0]
