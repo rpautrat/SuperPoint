@@ -181,7 +181,7 @@ def sample_homography(
         if allow_artifacts:
             valid = tf.range(1, n_scales + 1)  # all scales are valid except scale=1
         else:
-            valid = tf.where(tf.reduce_all((scaled >= 0.) & (scaled < 1.), [1, 2]))[:, 0]
+            valid = tf.where(tf.reduce_all((scaled >= 0.) & (scaled <= 1.), [1, 2]))[:, 0]
         idx = valid[tf.random_uniform((), maxval=tf.shape(valid)[0], dtype=tf.int32)]
         pts2 = scaled[idx]
 
@@ -209,7 +209,7 @@ def sample_homography(
         if allow_artifacts:
             valid = tf.range(1, n_angles + 1)  # all angles are valid, except angle=0
         else:
-            valid = tf.where(tf.reduce_all((rotated >= 0.) & (rotated < 1.),
+            valid = tf.where(tf.reduce_all((rotated >= 0.) & (rotated <= 1.),
                                            axis=[1, 2]))[:, 0]
         idx = valid[tf.random_uniform((), maxval=tf.shape(valid)[0], dtype=tf.int32)]
         pts2 = rotated[idx]
