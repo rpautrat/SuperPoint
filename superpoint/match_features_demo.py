@@ -60,8 +60,8 @@ def compute_homography(matched_kp1, matched_kp2):
     matched_pts2 = cv2.KeyPoint_convert(matched_kp2)
 
     # Estimate the homography between the matches using RANSAC
-    H, inliers = cv2.findHomography(matched_pts1[:, [1, 0]],
-                                    matched_pts2[:, [1, 0]],
+    H, inliers = cv2.findHomography(matched_pts1,
+                                    matched_pts2,
                                     cv2.RANSAC)
     inliers = inliers.flatten()
     return H, inliers
