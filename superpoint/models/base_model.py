@@ -116,7 +116,7 @@ class BaseModel(metaclass=ABCMeta):
             assert r in self.config, 'Required configuration entry: \'{}\''.format(r)
         assert set(self.datasets) <= self.dataset_names, \
             'Unknown dataset name: {}'.format(set(self.datasets)-self.dataset_names)
-        assert n_gpus > 0, 'TODO: CPU-only training is currently not supported.'
+        assert n_gpus >= 0
 
         with tf.variable_scope(self.name, reuse=tf.AUTO_REUSE):
             self._build_graph()
@@ -137,10 +137,12 @@ class BaseModel(metaclass=ABCMeta):
 
     def _gpu_tower(self, data, mode, batch_size):
         # Split the batch between the GPUs (data parallelism)
+        n_shards = max(1, self.n_gpus)
+        device = 'cpu' if self.n_gpus == 0 else 'gpu'
         with tf.device('/cpu:0'):
             with tf.name_scope('{}_data_sharding'.format(mode)):
-                shards = self._unstack_nested_dict(data, batch_size*self.n_gpus)
-                shards = self._shard_nested_dict(shards, self.n_gpus)
+                shards = self._unstack_nested_dict(data, batch_size*n_shards)
+                shards = self._shard_nested_dict(shards, n_shards)
 
         # Create towers, i.e. copies of the model for each GPU,
         # with their own loss and gradients.
@@ -148,8 +150,8 @@ class BaseModel(metaclass=ABCMeta):
         tower_gradvars = []
         tower_preds = []
         tower_metrics = []
-        for i in range(self.n_gpus):
-            worker = '/gpu:{}'.format(i)
+        for i in range(n_shards):
+            worker = '/{}:{}'.format(device, i)
             device_setter = tf.train.replica_device_setter(
                     worker_device=worker, ps_device='/cpu:0', ps_tasks=1)
             with tf.name_scope('{}_tower{}'.format(mode, i)) as scope:
