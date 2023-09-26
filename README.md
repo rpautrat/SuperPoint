@@ -2,6 +2,8 @@
 
 This is a Tensorflow implementation of  "SuperPoint: Self-Supervised Interest Point Detection and Description." Daniel DeTone, Tomasz Malisiewicz, Andrew Rabinovich. [ArXiv 2018](https://arxiv.org/abs/1712.07629).
 
+**Update**: We have converted the Tensorflow model into a [Pytorch one](https://github.com/rpautrat/SuperPoint/blob/master/weights/superpoint_v6_from_tf.pth). This provides a version of SuperPoint with MIT license, which can be used with the Pytorch model defined in [superpoint_pytorch.py](https://github.com/rpautrat/SuperPoint/blob/master/superpoint_pytorch.py).
+
 ![hp-v_200](doc/hp-v_200.png)
 ![hp-v_235](doc/hp-v_235.png)
 ![hp-v_280](doc/hp-v_280.png)
