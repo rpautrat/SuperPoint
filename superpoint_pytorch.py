@@ -68,7 +68,6 @@ class VGGBlock(nn.Sequential):
 
 class SuperPoint(nn.Module):
     default_conf = {
-        "descriptor_dim": 256,
         "nms_radius": 4,
         "max_num_keypoints": None,
         "detection_threshold": 0.005,
