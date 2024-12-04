@@ -117,7 +117,7 @@ make install  # install the Python requirements and setup the paths
 ```
 Python 3.6.1 is required. You will be asked to provide a path to an experiment directory (containing the training and prediction outputs, referred as `$EXPER_DIR`) and a dataset directory (referred as `$DATA_DIR`). Create them wherever you wish and make sure to provide their absolute paths.
 
-[MS-COCO 2014](http://cocodataset.org/#download) and [HPatches](http://icvl.ee.ic.ac.uk/vbalnt/hpatches/hpatches-sequences-release.tar.gz) should be downloaded into `$DATA_DIR`. The Synthetic Shapes dataset will also be generated there. The folder structure should look like:
+[MS-COCO 2014](http://cocodataset.org/#download) and [HPatches](https://www.kaggle.com/api/v1/datasets/download/javidtheimmortal/hpatches-sequence-release) should be downloaded into `$DATA_DIR`. The Synthetic Shapes dataset will also be generated there. The folder structure should look like:
 ```
 $DATA_DIR
 |-- COCO
